@@ -91,9 +91,10 @@ ownerTransactions  recurringObligations obligationOccurrences
   revenueLines: [{ category, amountSen, note }],
   collections: { cashSen, cardSen, transferSen, ewalletSen,
                  otaPrepaidSen, chargeToAccountSen,
-                 depositsSen, refundsSen },
+                 depositsSen, refundsSen, receivablesSettledSen },
   expenses: [{ category, amountSen, paidTo, receiptUrl, enteredBy }],
   cash: { openingFloatSen, bankedInSen, countedSen, varianceSen, varianceReason },
+  revenueGapSen, revenueGapReason,
   remarks,
   submittedBy, submittedAt, approvedBy, approvedAt
 }
@@ -204,8 +205,13 @@ The core screen (spec §4). Decisions made here:
 - **Variance** is recomputed server-side on submit (never trust the client). A reason is required when `|variance| > varianceThresholdSen` (default RM 20, from settings). Out-of-tolerance shows **amber** — never green/red (those stay reserved for money in/out).
 - **Business date is server-decided.** The client may request only the current business date or the previous one (backfilling a missed "yesterday"); the server validates it's one of those two and still missing. One report per day, enforced by the unique index on `businessDays.date`.
 - **Drafts live in the browser** (`localStorage`, keyed by date), cleared on submit. A dropped connection at 1am loses nothing. Only Submit writes to the server.
-- **`propertySettings`** holds `cutoffHour` and `varianceThresholdSen` (read via `lib/settings.ts`, defaults when absent). No settings UI yet.
+- **`propertySettings`** holds `cutoffHour`, `varianceThresholdSen`, `revenueGapThresholdSen`, and `expenseCeilingSen` (read via `lib/settings.ts`, defaults when absent). No settings UI yet.
 - Submit locks the day to `status: "submitted"`. Reception can't edit after; owner review/correction is Step 4.
+- **`revenueGap()` in `lib/nightReport.ts` checks the spec §3 identity** (revenue = collections + receivables added − receivables settled) and is a **warning, never a block** — reception must always be able to submit, or a refusal at 1am just gets fudged until it passes. Deposits are excluded from the identity entirely (money in, not revenue — netting them in would cause false gaps on deposit-taking nights). `receivablesSettledSen` was added to `collections`: money collected today (already inside cash/card/transfer/ewallet) that pays off a receivable booked on an earlier day, e.g. a monthly guest clearing last month's `chargeToAccount` balance. Same UX pattern as the cash variance: shown above submit, reason required past `revenueGapThresholdSen` (default RM 50), `revenueGapSen`/`revenueGapReason` stored on the document for the Step 4 owner queue to surface.
+- **§4.6 kitchen purchases** uses spec's Option A: a plain expense line (category "Kitchen purchases") through petty cash, not a float with top-ups. Simplest, right for now since reception hands over the cash each morning; revisit if that assumption stops holding.
+- **Amounts are validated as non-negative on both sides.** `MoneyInput` in the form amber-highlights a negative value the same way it does an unparseable one — `toSen()` accepts a leading `-`, so this can't be caught by "does it parse."
+- **Per-item expense ceiling (spec §4.5)** is `expenseCeilingSen` in settings, default RM 300 — spec §14 open question 5 asks the owner directly what this number should be and hasn't been answered yet, so treat RM 300 as a placeholder to revisit once they do. "Needs the owner, not reception" is implemented the same warn-not-block way as variance and the revenue gap: an expense line over the ceiling requires its (now-visible) `note` field to be filled before submit, checked both client- and server-side. It doesn't block the report or route anywhere yet — there's no owner review queue to route to until Step 4 — it just ensures the note the owner will need is captured at the point reception actually remembers why.
+- **`ExpenseLineSchema` carries `receiptUrl` (optional, string)**, matching the shape above. No upload mechanism exists yet — file storage for receipt/report photos (spec §4.1, §4.5) isn't decided (no bucket, no env vars, nothing in the Stack table) — this field just keeps the schema from drifting further from the documented shape until that decision is made.
 
 ---
 

@@ -9,6 +9,7 @@ import {
   PAID_BY,
   reconcile,
   requiresVarianceReason,
+  revenueGap,
   occupancyRatio,
   adrSen,
   revparSen,
@@ -31,9 +32,16 @@ interface ExpenseRow {
   paidTo: string;
   paidBy: (typeof PAID_BY)[number];
   note: string;
+  receiptUrl: string;
 }
 interface FormState {
-  rooms: { available: string; sold: string; houseUse: string; revenue: Amt };
+  rooms: {
+    available: string;
+    sold: string;
+    houseUse: string;
+    revenue: Amt;
+    reportPhotoUrl: string;
+  };
   revenueLines: RevenueRow[];
   collections: {
     cash: Amt;
@@ -44,11 +52,13 @@ interface FormState {
     chargeToAccount: Amt;
     deposits: Amt;
     refunds: Amt;
+    receivablesSettled: Amt;
   };
   expenses: ExpenseRow[];
   cash: { openingFloat: Amt; bankedIn: Amt; counted: Amt };
   remarks: string;
   varianceReason: string;
+  revenueGapReason: string;
 }
 
 interface Defaults {
@@ -64,6 +74,7 @@ function initialState(defaults: Defaults): FormState {
       sold: "",
       houseUse: "",
       revenue: "",
+      reportPhotoUrl: "",
     },
     revenueLines: [],
     collections: {
@@ -75,6 +86,7 @@ function initialState(defaults: Defaults): FormState {
       chargeToAccount: "",
       deposits: "",
       refunds: "",
+      receivablesSettled: "",
     },
     expenses: [],
     cash: {
@@ -87,10 +99,11 @@ function initialState(defaults: Defaults): FormState {
     },
     remarks: "",
     varianceReason: "",
+    revenueGapReason: "",
   };
 }
 
-/** Parse an amount field to sen. Empty is 0; invalid is null. */
+/** Parse an amount field to sen. Empty is 0; unparseable is null. */
 function parseAmt(s: string): number | null {
   if (s.trim() === "") return 0;
   try {
@@ -98,6 +111,12 @@ function parseAmt(s: string): number | null {
   } catch {
     return null;
   }
+}
+/** True if the field is unparseable OR a valid-but-negative amount — every
+ * amount on this form must be zero or more, so both count as "fix this". */
+function amtInvalid(s: string): boolean {
+  const v = parseAmt(s);
+  return v === null || v < 0;
 }
 function sen(s: string): number {
   const v = parseAmt(s);
@@ -123,7 +142,7 @@ function MoneyInput({
   onChange: (v: string) => void;
   ariaLabel: string;
 }) {
-  const invalid = parseAmt(value) === null;
+  const invalid = amtInvalid(value);
   return (
     <input
       aria-label={ariaLabel}
@@ -185,10 +204,14 @@ export default function NightReportForm({
   date,
   defaults,
   varianceThresholdSen,
+  revenueGapThresholdSen,
+  expenseCeilingSen,
 }: {
   date: string;
   defaults: Defaults;
   varianceThresholdSen: number;
+  revenueGapThresholdSen: number;
+  expenseCeilingSen: number;
 }) {
   const router = useRouter();
   const draftKey = `hbkl:nr:${date}`;
@@ -241,18 +264,37 @@ export default function NightReportForm({
         countedSen: sen(state.cash.counted),
       },
     });
+    const totalRevSen = totalRevenueSen(roomRevenueSen, revenueLinesSen);
+    const gap = revenueGap({
+      totalRevenueSen: totalRevSen,
+      collections: {
+        cashSen: sen(state.collections.cash),
+        cardSen: sen(state.collections.card),
+        transferSen: sen(state.collections.transfer),
+        ewalletSen: sen(state.collections.ewallet),
+        otaPrepaidSen: sen(state.collections.otaPrepaid),
+        chargeToAccountSen: sen(state.collections.chargeToAccount),
+        refundsSen: sen(state.collections.refunds),
+        receivablesSettledSen: sen(state.collections.receivablesSettled),
+      },
+    });
     return {
       occupancy: occupancyRatio(sold, available),
       adr: adrSen(roomRevenueSen, sold),
       revpar: revparSen(roomRevenueSen, available),
-      totalRevenueSen: totalRevenueSen(roomRevenueSen, revenueLinesSen),
+      totalRevenueSen: totalRevSen,
       recon,
       reasonRequired: requiresVarianceReason(
         recon.varianceSen,
         varianceThresholdSen,
       ),
+      gap,
+      gapReasonRequired: requiresVarianceReason(
+        gap.gapSen,
+        revenueGapThresholdSen,
+      ),
     };
-  }, [state, varianceThresholdSen]);
+  }, [state, varianceThresholdSen, revenueGapThresholdSen]);
 
   const set = (updater: (s: FormState) => FormState) =>
     setState((s) => updater(structuredClone(s)));
@@ -277,6 +319,7 @@ export default function NightReportForm({
         paidTo: "",
         paidBy: "cash",
         note: "",
+        receiptUrl: "",
       });
       return s;
     });
@@ -285,15 +328,18 @@ export default function NightReportForm({
   async function handleSubmit() {
     setError(null);
 
-    // Every amount must parse.
+    // Every amount must parse, and none may be negative (an amber-outlined
+    // field catches this before the user even reaches Submit).
     const badAmount =
-      parseAmt(state.rooms.revenue) === null ||
-      Object.values(state.collections).some((v) => parseAmt(v) === null) ||
-      Object.values(state.cash).some((v) => parseAmt(v) === null) ||
-      state.revenueLines.some((l) => parseAmt(l.amount) === null) ||
-      state.expenses.some((e) => parseAmt(e.amount) === null);
+      amtInvalid(state.rooms.revenue) ||
+      Object.values(state.collections).some((v) => amtInvalid(v)) ||
+      Object.values(state.cash).some((v) => amtInvalid(v)) ||
+      state.revenueLines.some((l) => amtInvalid(l.amount)) ||
+      state.expenses.some((e) => amtInvalid(e.amount));
     if (badAmount) {
-      setError("Some amounts aren't valid. Check the fields outlined in amber.");
+      setError(
+        "Some amounts aren't valid — an amount can't be negative. Check the fields outlined in amber.",
+      );
       return;
     }
 
@@ -316,6 +362,23 @@ export default function NightReportForm({
       );
       return;
     }
+    if (derived.gapReasonRequired && !state.revenueGapReason.trim()) {
+      setError(
+        `Revenue is ${formatRM(Math.abs(derived.gap.gapSen))} ${
+          derived.gap.gapSen < 0 ? "under" : "over"
+        } what collections and receivables account for. Enter a reason before submitting.`,
+      );
+      return;
+    }
+    const overCeiling = state.expenses.find(
+      (e) => sen(e.amount) > expenseCeilingSen && !e.note.trim(),
+    );
+    if (overCeiling) {
+      setError(
+        `The ${formatRM(sen(overCeiling.amount))} "${overCeiling.category}" expense is over the ${formatRM(expenseCeilingSen)} ceiling — add a note for the owner before submitting.`,
+      );
+      return;
+    }
 
     const report = {
       rooms: {
@@ -323,6 +386,7 @@ export default function NightReportForm({
         sold,
         houseUse,
         revenueSen: sen(state.rooms.revenue),
+        reportPhotoUrl: state.rooms.reportPhotoUrl.trim() || undefined,
       },
       revenueLines: state.revenueLines.map((l) => ({
         category: l.category,
@@ -338,6 +402,7 @@ export default function NightReportForm({
         chargeToAccountSen: sen(state.collections.chargeToAccount),
         depositsSen: sen(state.collections.deposits),
         refundsSen: sen(state.collections.refunds),
+        receivablesSettledSen: sen(state.collections.receivablesSettled),
       },
       expenses: state.expenses.map((e) => ({
         category: e.category,
@@ -345,6 +410,7 @@ export default function NightReportForm({
         paidTo: e.paidTo,
         paidBy: e.paidBy,
         note: e.note,
+        receiptUrl: e.receiptUrl.trim() || undefined,
       })),
       cash: {
         openingFloatSen: sen(state.cash.openingFloat),
@@ -353,6 +419,7 @@ export default function NightReportForm({
       },
       remarks: state.remarks,
       varianceReason: state.varianceReason,
+      revenueGapReason: state.revenueGapReason,
     };
 
     setPending(true);
@@ -379,6 +446,9 @@ export default function NightReportForm({
   const varianceStyle: React.CSSProperties = derived.reasonRequired
     ? { color: "var(--warn)", background: "var(--warn-bg)" }
     : { color: "var(--text)" };
+  const gapStyle: React.CSSProperties = derived.gapReasonRequired
+    ? { color: "var(--warn)", background: "var(--warn-bg)" }
+    : { color: "var(--text-muted)" };
 
   return (
     <div className="flex flex-col gap-6 pb-40">
@@ -419,6 +489,18 @@ export default function NightReportForm({
           Occupancy {(derived.occupancy * 100).toFixed(0)}% · ADR{" "}
           {formatRM(derived.adr)} · RevPAR {formatRM(derived.revpar)}
         </p>
+        <Row label="iHotel report photo link (optional)">
+          <input
+            aria-label="iHotel report photo link"
+            placeholder="Paste a link — WhatsApp, Google Photos, etc."
+            className="h-11 rounded border px-3"
+            style={fieldStyle}
+            value={state.rooms.reportPhotoUrl}
+            onChange={(e) =>
+              set((s) => ((s.rooms.reportPhotoUrl = e.target.value), s))
+            }
+          />
+        </Row>
       </section>
 
       {/* Other revenue */}
@@ -489,6 +571,7 @@ export default function NightReportForm({
               ["chargeToAccount", "Charge to account (receivable)"],
               ["deposits", "Deposits received"],
               ["refunds", "Refunds paid out"],
+              ["receivablesSettled", "Receivables settled today"],
             ] as const
           ).map(([key, label]) => (
             <Row key={key} label={label}>
@@ -500,6 +583,11 @@ export default function NightReportForm({
             </Row>
           ))}
         </div>
+        <p style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}>
+          &ldquo;Receivables settled today&rdquo; is money above that pays off an old
+          bill — e.g. a monthly guest clearing last month&apos;s account — not new
+          revenue. Leave at 0 on an ordinary night.
+        </p>
       </section>
 
       {/* Expenses */}
@@ -552,6 +640,43 @@ export default function NightReportForm({
                 ))}
               </select>
             </div>
+            {(() => {
+              const overCeiling =
+                sen(e.amount) > expenseCeilingSen && !e.note.trim();
+              return (
+                <>
+                  <input
+                    aria-label="Expense note"
+                    placeholder={
+                      sen(e.amount) > expenseCeilingSen
+                        ? `Over ${formatRM(expenseCeilingSen)} — note for the owner (required)`
+                        : "Note (optional)"
+                    }
+                    className="h-11 rounded border px-3"
+                    style={{
+                      ...fieldStyle,
+                      borderColor: overCeiling ? "var(--warn)" : "var(--border-strong)",
+                    }}
+                    value={e.note}
+                    onChange={(ev) => set((s) => ((s.expenses[i].note = ev.target.value), s))}
+                  />
+                  {overCeiling ? (
+                    <p style={{ fontSize: "var(--text-caption)", color: "var(--warn)" }}>
+                      This is over the {formatRM(expenseCeilingSen)} per-item ceiling —
+                      add a note explaining it for the owner.
+                    </p>
+                  ) : null}
+                </>
+              );
+            })()}
+            <input
+              aria-label="Receipt photo link"
+              placeholder="Receipt photo link (optional)"
+              className="h-11 rounded border px-3"
+              style={fieldStyle}
+              value={e.receiptUrl}
+              onChange={(ev) => set((s) => ((s.expenses[i].receiptUrl = ev.target.value), s))}
+            />
             <button
               type="button"
               onClick={() => set((s) => ((s.expenses.splice(i, 1)), s))}
@@ -611,6 +736,17 @@ export default function NightReportForm({
             />
           </Row>
         ) : null}
+        {derived.gapReasonRequired ? (
+          <Row label="Reason for the revenue gap (required)">
+            <input
+              aria-label="Revenue gap reason"
+              className="h-11 rounded border px-3"
+              style={fieldStyle}
+              value={state.revenueGapReason}
+              onChange={(e) => set((s) => ((s.revenueGapReason = e.target.value), s))}
+            />
+          </Row>
+        ) : null}
       </section>
 
       {/* Remarks */}
@@ -647,6 +783,18 @@ export default function NightReportForm({
             <span className="money" style={{ fontSize: "var(--text-hero-money)", fontWeight: 600 }}>
               {v > 0 ? "+" : ""}
               {formatRM(v)}
+            </span>
+          </div>
+          <div
+            className="flex items-center justify-between rounded px-2 py-1"
+            style={gapStyle}
+          >
+            <span style={{ fontSize: "var(--text-label)", fontWeight: 600 }}>
+              Revenue gap{derived.gapReasonRequired ? " — out of tolerance" : ""}
+            </span>
+            <span className="money" style={{ fontWeight: 600 }}>
+              {derived.gap.gapSen > 0 ? "+" : ""}
+              {formatRM(derived.gap.gapSen)}
             </span>
           </div>
           {error ? (

@@ -22,6 +22,8 @@ function summarize(doc: Document): DaySummary {
     countedSen: doc.cash?.countedSen ?? 0,
     varianceSen: doc.cash?.varianceSen ?? 0,
     varianceReason: doc.cash?.varianceReason ?? "",
+    revenueGapSen: doc.revenueGapSen ?? 0,
+    revenueGapReason: doc.revenueGapReason ?? "",
   };
 }
 
@@ -56,6 +58,8 @@ export default async function ReceptionHome() {
         openingFloatSen: settings.openingFloatSen,
       }}
       varianceThresholdSen={settings.varianceThresholdSen}
+      revenueGapThresholdSen={settings.revenueGapThresholdSen}
+      expenseCeilingSen={settings.expenseCeilingSen}
     />
   );
 }

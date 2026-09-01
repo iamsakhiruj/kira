@@ -6,7 +6,9 @@ import {
   adrSen,
   revparSen,
   totalRevenueSen,
+  revenueGap,
   type ReconcileInput,
+  type RevenueGapInput,
 } from "./nightReport";
 
 function base(): ReconcileInput {
@@ -73,6 +75,62 @@ describe("requiresVarianceReason", () => {
     expect(requiresVarianceReason(2001, 2000)).toBe(true);
     expect(requiresVarianceReason(-2001, 2000)).toBe(true); // shortfall too
     expect(requiresVarianceReason(0, 2000)).toBe(false);
+  });
+});
+
+describe("revenueGap", () => {
+  function base(): RevenueGapInput {
+    return {
+      totalRevenueSen: 185000,
+      collections: {
+        cashSen: 62000,
+        cardSen: 60000,
+        transferSen: 43000,
+        ewalletSen: 20000,
+        otaPrepaidSen: 0,
+        chargeToAccountSen: 0,
+        refundsSen: 0,
+        receivablesSettledSen: 0,
+      },
+    };
+  }
+
+  it("is zero when revenue exactly equals collections", () => {
+    // 62000+60000+43000+20000 = 185000, matches totalRevenueSen exactly
+    expect(revenueGap(base()).gapSen).toBe(0);
+  });
+
+  it("treats OTA prepaid and charge-to-account as receivables added, closing the gap", () => {
+    const input = base();
+    input.collections.cardSen = 60000 - 15000; // RM150 less arrived at the desk...
+    input.collections.otaPrepaidSen = 15000; // ...because it's an OTA receivable instead
+    expect(revenueGap(input).gapSen).toBe(0);
+  });
+
+  it("subtracts refunds paid out from collections", () => {
+    const input = base();
+    input.collections.refundsSen = 5000;
+    // expected revenue drops by 5000, so today's revenue now looks 5000 too high
+    expect(revenueGap(input).gapSen).toBe(5000);
+  });
+
+  it("nets out a settled receivable so cash for an old bill isn't mistaken for today's revenue", () => {
+    const input = base();
+    input.collections.cashSen += 4000; // a monthly guest pays off an old balance in cash
+    input.collections.receivablesSettledSen = 4000; // ...which this field says isn't new revenue
+    expect(revenueGap(input).gapSen).toBe(0);
+  });
+
+  it("flags a real gap when revenue and collections genuinely disagree", () => {
+    const input = base();
+    input.totalRevenueSen = 200000; // RM500 of revenue with nothing collected for it
+    expect(revenueGap(input).gapSen).toBe(15000);
+  });
+
+  it("excludes deposits from the identity entirely — they never distort the gap", () => {
+    // depositsSen isn't even a field on RevenueGapInput.collections: a day
+    // that takes a large guest deposit must not move gapSen at all.
+    expect(revenueGap(base()).gapSen).toBe(0);
   });
 });
 

@@ -13,6 +13,8 @@ export interface DaySummary {
   countedSen: number;
   varianceSen: number;
   varianceReason: string;
+  revenueGapSen: number;
+  revenueGapReason: string;
 }
 
 export interface DaySlot {
@@ -24,12 +26,15 @@ export interface DaySlot {
 function SubmittedCard({
   slot,
   thresholdSen,
+  gapThresholdSen,
 }: {
   slot: DaySlot;
   thresholdSen: number;
+  gapThresholdSen: number;
 }) {
   const s = slot.summary!;
   const out = requiresVarianceReason(s.varianceSen, thresholdSen);
+  const gapOut = requiresVarianceReason(s.revenueGapSen, gapThresholdSen);
   return (
     <div
       className="rounded-card border p-4"
@@ -78,6 +83,21 @@ function SubmittedCard({
         {s.varianceReason ? (
           <p style={{ color: "var(--text-faint)" }}>Reason: {s.varianceReason}</p>
         ) : null}
+        <div
+          className="flex justify-between rounded px-1"
+          style={gapOut ? { color: "var(--warn)", background: "var(--warn-bg)" } : undefined}
+        >
+          <span style={{ color: gapOut ? "var(--warn)" : "var(--text-muted)" }}>
+            Revenue gap
+          </span>
+          <span className="money">
+            {s.revenueGapSen > 0 ? "+" : ""}
+            {formatRM(s.revenueGapSen)}
+          </span>
+        </div>
+        {s.revenueGapReason ? (
+          <p style={{ color: "var(--text-faint)" }}>Reason: {s.revenueGapReason}</p>
+        ) : null}
       </div>
     </div>
   );
@@ -87,10 +107,14 @@ export default function NightReportScreen({
   slots,
   defaults,
   varianceThresholdSen,
+  revenueGapThresholdSen,
+  expenseCeilingSen,
 }: {
   slots: DaySlot[];
   defaults: { roomsAvailable: number | null; openingFloatSen: number | null };
   varianceThresholdSen: number;
+  revenueGapThresholdSen: number;
+  expenseCeilingSen: number;
 }) {
   const firstMissing = slots.find((s) => s.summary === null)?.date ?? null;
   const [active, setActive] = useState<string | null>(firstMissing);
@@ -104,6 +128,7 @@ export default function NightReportScreen({
               key={slot.date}
               slot={slot}
               thresholdSen={varianceThresholdSen}
+              gapThresholdSen={revenueGapThresholdSen}
             />
           );
         }
@@ -117,6 +142,8 @@ export default function NightReportScreen({
                 date={slot.date}
                 defaults={defaults}
                 varianceThresholdSen={varianceThresholdSen}
+                revenueGapThresholdSen={revenueGapThresholdSen}
+                expenseCeilingSen={expenseCeilingSen}
               />
             </div>
           );

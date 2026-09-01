@@ -7,6 +7,8 @@ import {
   NightReportInputSchema,
   reconcile,
   requiresVarianceReason,
+  revenueGap,
+  totalRevenueSen,
 } from "@/lib/nightReport";
 import {
   ensureBusinessDaysIndexes,
@@ -31,9 +33,11 @@ export async function submitNightReport(
 
   const parsed = NightReportInputSchema.safeParse(payload?.report);
   if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const where = issue?.path?.length ? ` (${issue.path.join(".")})` : "";
     return {
       ok: false,
-      error: parsed.error.issues[0]?.message ?? "Please check the form.",
+      error: issue ? `${issue.message}${where}` : "Please check the form.",
     };
   }
   const input = parsed.data;
@@ -64,6 +68,37 @@ export async function submitNightReport(
     };
   }
 
+  // Revenue-vs-collections reconciliation (spec §3 / CLAUDE.md rule 3) — also
+  // recomputed server-side. A warning, never a block: it only demands a
+  // reason, it never refuses the submission.
+  const gap = revenueGap({
+    totalRevenueSen: totalRevenueSen(input.rooms.revenueSen, input.revenueLines),
+    collections: input.collections,
+  });
+  if (
+    requiresVarianceReason(gap.gapSen, settings.revenueGapThresholdSen) &&
+    !input.revenueGapReason.trim()
+  ) {
+    const sign = gap.gapSen < 0 ? "under" : "over";
+    return {
+      ok: false,
+      error: `Revenue is ${formatRM(Math.abs(gap.gapSen))} ${sign} what collections and receivables account for. Enter a reason for the difference.`,
+    };
+  }
+
+  // Per-item expense ceiling (spec §4.5): "anything above it needs the
+  // owner, not reception." A warning, same pattern as above — reception can
+  // still submit, but must leave a note so the owner sees why.
+  const overCeiling = input.expenses.find(
+    (e) => e.amountSen > settings.expenseCeilingSen && !e.note.trim(),
+  );
+  if (overCeiling) {
+    return {
+      ok: false,
+      error: `The ${formatRM(overCeiling.amountSen)} "${overCeiling.category}" expense is over the ${formatRM(settings.expenseCeilingSen)} ceiling — add a note for the owner before submitting.`,
+    };
+  }
+
   const now = new Date();
   const doc = {
     date,
@@ -79,6 +114,8 @@ export async function submitNightReport(
       varianceSen: recon.varianceSen,
       varianceReason: input.varianceReason.trim(),
     },
+    revenueGapSen: gap.gapSen,
+    revenueGapReason: input.revenueGapReason.trim(),
     remarks: input.remarks.trim(),
     submittedBy: user.sub,
     submittedAt: now,
@@ -96,7 +133,7 @@ export async function submitNightReport(
       collection: "businessDays",
       documentId: res.insertedId.toString(),
       before: null,
-      after: { date, status: "submitted", varianceSen: recon.varianceSen },
+      after: doc,
     });
     return { ok: true, date };
   } catch (err) {

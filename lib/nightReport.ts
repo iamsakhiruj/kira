@@ -61,6 +61,10 @@ export const ExpenseLineSchema = z.object({
   paidTo: z.string().max(120).default(""),
   paidBy: z.enum(PAID_BY),
   note: z.string().max(200).default(""),
+  // Matches the canonical businessDays shape in CLAUDE.md. No upload
+  // mechanism exists yet (spec §4.5's optional receipt photo) — this just
+  // keeps the schema from drifting from the documented shape until one does.
+  receiptUrl: z.string().max(500).optional(),
 });
 
 export const RoomsSchema = z
@@ -69,6 +73,11 @@ export const RoomsSchema = z
     sold: count,
     houseUse: count,
     revenueSen: nonNegSen,
+    // Spec §4.1: "add an optional photo upload of that [iHotel daily] report."
+    // No storage service is wired up, so this is a pasted link (WhatsApp,
+    // Google Photos, etc.), not a real upload — not validated as a strict
+    // URL, same as ExpenseLineSchema.receiptUrl above.
+    reportPhotoUrl: z.string().max(500).optional(),
   })
   .refine((r) => r.sold + r.houseUse <= r.available, {
     message: "Rooms sold plus house use cannot exceed rooms available.",
@@ -84,6 +93,13 @@ export const CollectionsSchema = z.object({
   chargeToAccountSen: nonNegSen,
   depositsSen: nonNegSen,
   refundsSen: nonNegSen,
+  // Money collected today (already counted above, in cash/card/transfer/
+  // ewallet) that pays off a receivable booked on an *earlier* day — a
+  // monthly guest settling last month's chargeToAccount balance, an OTA
+  // payout landing for a stay booked days ago. It corresponds to zero new
+  // revenue today, so the revenue/collections identity in revenueGap()
+  // needs it to avoid a false gap on days this happens.
+  receivablesSettledSen: nonNegSen,
 });
 
 export const CashSchema = z.object({
@@ -101,6 +117,7 @@ export const NightReportInputSchema = z.object({
   cash: CashSchema,
   remarks: z.string().max(2000).default(""),
   varianceReason: z.string().max(500).default(""),
+  revenueGapReason: z.string().max(500).default(""),
 });
 
 export type NightReportInput = z.infer<typeof NightReportInputSchema>;
@@ -162,6 +179,57 @@ export function requiresVarianceReason(
   thresholdSen: number,
 ): boolean {
   return Math.abs(varianceSen) > thresholdSen;
+}
+
+// --- Revenue reconciliation (spec §3 / CLAUDE.md rule 3) -------------------
+//
+// Revenue = Collections + Receivables added today − Receivables settled
+// today. A warning, never a block (see night-report-form.tsx) — reception
+// must always be able to submit. Deposits play no part in this identity:
+// they're money in but not revenue, so they're excluded from both sides
+// rather than netted against anything.
+
+export interface RevenueGapInput {
+  totalRevenueSen: number;
+  collections: {
+    cashSen: number;
+    cardSen: number;
+    transferSen: number;
+    ewalletSen: number;
+    otaPrepaidSen: number;
+    chargeToAccountSen: number;
+    refundsSen: number;
+    receivablesSettledSen: number;
+  };
+}
+
+export interface RevenueGap {
+  actualCollectionsSen: number; // cash+card+transfer+ewallet, minus refunds paid out
+  receivablesAddedSen: number; // OTA prepaid + charge to account
+  receivablesSettledSen: number;
+  expectedRevenueSen: number;
+  totalRevenueSen: number;
+  gapSen: number; // totalRevenue − expectedRevenue; 0 means the identity holds
+}
+
+export function revenueGap(input: RevenueGapInput): RevenueGap {
+  const c = input.collections;
+  const actualCollectionsSen =
+    c.cashSen + c.cardSen + c.transferSen + c.ewalletSen - c.refundsSen;
+  const receivablesAddedSen = c.otaPrepaidSen + c.chargeToAccountSen;
+  const receivablesSettledSen = c.receivablesSettledSen;
+  const expectedRevenueSen =
+    actualCollectionsSen + receivablesAddedSen - receivablesSettledSen;
+  const gapSen = input.totalRevenueSen - expectedRevenueSen;
+
+  return {
+    actualCollectionsSen,
+    receivablesAddedSen,
+    receivablesSettledSen,
+    expectedRevenueSen,
+    totalRevenueSen: input.totalRevenueSen,
+    gapSen,
+  };
 }
 
 // --- Room metrics (display only; not stored) ------------------------------
