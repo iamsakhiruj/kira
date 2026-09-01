@@ -9,6 +9,7 @@
  */
 
 import { z } from "zod";
+import { getDb } from "./mongodb";
 
 export const AUDIT_ACTIONS = [
   "create",
@@ -68,4 +69,14 @@ export async function writeAudit(
   const entry = buildAuditEntry(input);
   const { insertedId } = await sink.insertOne(entry);
   return insertedId;
+}
+
+/**
+ * Convenience for application code: write to the `auditLog` collection in the
+ * app database. Server (Node) runtime only. Tests use writeAudit with a fake
+ * sink instead, so they never touch a database.
+ */
+export async function recordAudit(input: AuditInput): Promise<unknown> {
+  const db = await getDb();
+  return writeAudit(db.collection("auditLog") as unknown as AuditSink, input);
 }
