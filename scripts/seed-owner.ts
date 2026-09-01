@@ -15,6 +15,7 @@
 import { ensureUserIndexes, getUserByEmail, createUser } from "../lib/users";
 import { hashPassword } from "../lib/password";
 import type { Role } from "../lib/session";
+import { validateMongoUri } from "../lib/mongoUri";
 
 // Load .env.local. Imports above only read env lazily (at call time), so
 // loading it here — after the import graph is evaluated — is fine.
@@ -44,6 +45,15 @@ async function ensureUser(
 }
 
 async function main() {
+  // Validate the connection string shape before touching the network.
+  const uriErrors = validateMongoUri(process.env.MONGODB_URI ?? "");
+  if (uriErrors.length > 0) {
+    console.error("MONGODB_URI looks malformed:");
+    for (const e of uriErrors) console.error("  - " + e);
+    console.error("Fix it in .env.local, then run `npm run seed` again.");
+    process.exit(1);
+  }
+
   const ownerEmail = process.env.SEED_OWNER_EMAIL;
   const ownerPassword = process.env.SEED_OWNER_PASSWORD;
   if (!ownerEmail || !ownerPassword) {
@@ -76,7 +86,26 @@ async function main() {
 
 main()
   .then(() => process.exit(0))
-  .catch((err) => {
-    console.error("Seed failed:", err);
+  .catch((err: unknown) => {
+    // Never print the raw error or the connection string — a MongoParseError
+    // can contain the full URI (with password). Report only safe fields.
+    const e = err as { name?: string; code?: string; cause?: { code?: string } };
+    const code = e?.code ?? e?.cause?.code;
+    const message = String((err as { message?: string })?.message ?? "");
+    const dnsSrvFailure =
+      /querySrv|ECONNREFUSED|ENOTFOUND|EAI_AGAIN/i.test(message) ||
+      code === "ECONNREFUSED" ||
+      code === "ENOTFOUND" ||
+      code === "EAI_AGAIN";
+
+    if (dnsSrvFailure) {
+      console.error(
+        "DNS SRV lookup failed. Check the hostname in MONGODB_URI, or your network may block SRV lookups — try the non-SRV mongodb:// connection string from Atlas.",
+      );
+    } else {
+      console.error(
+        `Seed failed (${e?.name ?? "error"}${code ? ", " + code : ""}).`,
+      );
+    }
     process.exit(1);
   });

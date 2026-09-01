@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getUserByEmail } from "@/lib/users";
 import { verifyPassword } from "@/lib/password";
+import { DbUnavailableError } from "@/lib/mongodb";
+import { maskConnectionString } from "@/lib/mongoUri";
 import {
   createSessionToken,
   SESSION_COOKIE,
@@ -21,6 +23,17 @@ const LoginSchema = z.object({
   password: z.string().min(1),
 });
 
+/** A one-line, password-safe description of an error for server-side logs. */
+function describeError(err: unknown): string {
+  if (err instanceof Error) {
+    const cause = (err as { cause?: unknown }).cause;
+    const causeMsg =
+      cause instanceof Error ? ` | cause: ${cause.name}: ${cause.message}` : "";
+    return `${err.name}: ${err.message}${causeMsg}`;
+  }
+  return String(err);
+}
+
 export async function login(
   _prev: LoginState,
   formData: FormData,
@@ -33,15 +46,30 @@ export async function login(
     return { error: "Enter your email and password." };
   }
 
-  // One generic message for every failure — never reveal whether the email
-  // exists or the password was wrong.
+  // One generic message for every auth failure — never reveal whether the
+  // email exists or the password was wrong.
   const fail: LoginState = { error: "Wrong email or password." };
 
-  const user = await getUserByEmail(parsed.data.email);
-  if (!user || user.active !== true) return fail;
+  let user: Awaited<ReturnType<typeof getUserByEmail>> = null;
+  try {
+    const found = await getUserByEmail(parsed.data.email);
+    if (found && found.active === true) {
+      const ok = await verifyPassword(found.passwordHash, parsed.data.password);
+      if (ok) user = found;
+    }
+  } catch (err) {
+    // Log the real cause server-side (password masked) so it's debuggable...
+    console.error("[login] " + maskConnectionString(describeError(err)));
+    // ...but only claim the database is down when it actually is. Any other
+    // unexpected error (e.g. during password verification) is a failed login,
+    // not a reason to mislead the user about infrastructure.
+    if (err instanceof DbUnavailableError) {
+      return { error: "Cannot reach the database. Contact your administrator." };
+    }
+    return fail;
+  }
 
-  const ok = await verifyPassword(user.passwordHash, parsed.data.password);
-  if (!ok) return fail;
+  if (!user) return fail;
 
   const token = await createSessionToken({
     sub: user._id.toString(),
