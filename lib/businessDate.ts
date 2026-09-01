@@ -110,6 +110,23 @@ export function lastBusinessDates(current: string, days: number): string[] {
 }
 
 /**
+ * Which of `dates` are worth checking for a missing report, given the
+ * earliest report ever submitted was `earliestDate` (null if none exist
+ * yet). A property that's only been live for a day has no missing reports
+ * from the five days before that — it just hadn't started. If no report
+ * has ever been submitted, the only relevant date is `current` itself
+ * (today's, not yet due) — there's nothing to backfill.
+ */
+export function datesSinceFirstReport(
+  dates: string[],
+  earliestDate: string | null,
+  current: string,
+): string[] {
+  if (earliestDate === null) return [current];
+  return dates.filter((d) => d >= earliestDate);
+}
+
+/**
  * Whether `role` may submit a night report for `date`, given today's
  * business date is `current`. Nobody may pick a future date. Reception is
  * limited to the last `backfillDays` business dates (today plus the

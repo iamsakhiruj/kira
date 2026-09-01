@@ -1,5 +1,5 @@
 import StubPage from "@/components/stub-page";
 
 export default function ReportsPage() {
-  return <StubPage title="Reports" step="2.8" />;
+  return <StubPage title="Reports" />;
 }

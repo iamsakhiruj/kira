@@ -145,6 +145,11 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  /* The page itself never scrolls horizontally — wide content (tables,
+     dashboard grids) scrolls inside its own container instead. A safety
+     net against any element that miscalculates its width next to the
+     sidebar, not a substitute for sizing that content correctly. */
+  overflow-x: hidden;
 }
 
 /* Focus ring — visible on every interactive element. Never remove outlines. */

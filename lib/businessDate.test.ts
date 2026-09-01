@@ -4,6 +4,7 @@ import {
   previousBusinessDate,
   businessDateMinusDays,
   lastBusinessDates,
+  datesSinceFirstReport,
   canSubmitDate,
   formatBusinessDateLabel,
 } from "./businessDate";
@@ -129,6 +130,29 @@ describe("lastBusinessDates", () => {
     expect(dates[0]).toBe("2026-09-01");
     expect(dates.at(-1)).toBe("2026-09-07");
     expect(dates).toHaveLength(7);
+  });
+});
+
+describe("datesSinceFirstReport", () => {
+  const CURRENT = "2026-09-07";
+  const WINDOW = lastBusinessDates(CURRENT, 7); // 09-01 .. 09-07
+
+  it("returns only today when no report has ever been submitted", () => {
+    expect(datesSinceFirstReport(WINDOW, null, CURRENT)).toEqual([CURRENT]);
+  });
+
+  it("clips the window to the first report's date — the exact bug this fixes: a one-day-old property must not show 6 phantom missing days", () => {
+    // First report was submitted today — nothing before it is "missing".
+    expect(datesSinceFirstReport(WINDOW, CURRENT, CURRENT)).toEqual([CURRENT]);
+  });
+
+  it("includes dates from the first report onward, drops dates before it", () => {
+    const result = datesSinceFirstReport(WINDOW, "2026-09-05", CURRENT);
+    expect(result).toEqual(["2026-09-05", "2026-09-06", "2026-09-07"]);
+  });
+
+  it("returns the full window when the property predates it", () => {
+    expect(datesSinceFirstReport(WINDOW, "2025-01-01", CURRENT)).toEqual(WINDOW);
   });
 });
 

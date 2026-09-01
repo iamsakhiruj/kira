@@ -48,6 +48,18 @@ export async function insertBusinessDay(
   return col.insertOne(doc);
 }
 
+/**
+ * The date of the earliest businessDays document ever, or null if none
+ * exist. Used to stop "missing report" checks from reaching back before
+ * the system was ever used — a brand-new property has no missing reports,
+ * it just hasn't started yet.
+ */
+export async function getEarliestBusinessDate(): Promise<string | null> {
+  const col = await collection();
+  const doc = await col.find({}, { projection: { date: 1 } }).sort({ date: 1 }).limit(1).next();
+  return doc ? String(doc.date) : null;
+}
+
 /** Submitted days awaiting the owner's review, oldest first. */
 export async function getPendingBusinessDays(): Promise<WithId<Document>[]> {
   const col = await collection();

@@ -36,7 +36,7 @@ export default function SidebarToggle({
         </button>
       </div>
       <aside
-        className={`${open ? "flex" : "hidden"} md:flex w-full flex-col border-r md:w-56 md:shrink-0`}
+        className={`${open ? "flex" : "hidden"} md:flex min-w-0 flex-col border-r md:w-56 md:shrink-0`}
         style={{ background: "var(--surface)", borderColor: "var(--border)" }}
       >
         <div className="hidden border-b p-3 md:block" style={{ borderColor: "var(--border)" }}>
