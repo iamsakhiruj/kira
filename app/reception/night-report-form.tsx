@@ -4,8 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toSen, fromSen, formatRM } from "@/lib/money";
 import {
-  REVENUE_CATEGORIES,
-  EXPENSE_CATEGORIES,
   PAID_BY,
   reconcile,
   requiresVarianceReason,
@@ -20,15 +18,18 @@ import { submitNightReport } from "./actions";
 
 type Amt = string; // raw user input, parsed to sen with lib/money
 
+// Category is a plain string, not a literal union — the list is DB-editable
+// (Phase 2 §2.3, categories collection), fetched server-side and passed in
+// as revenueCategoryNames/expenseCategoryNames rather than imported here.
 interface RevenueRow {
   id: number;
-  category: (typeof REVENUE_CATEGORIES)[number];
+  category: string;
   amount: Amt;
   note: string;
 }
 interface ExpenseRow {
   id: number;
-  category: (typeof EXPENSE_CATEGORIES)[number];
+  category: string;
   amount: Amt;
   paidTo: string;
   paidBy: (typeof PAID_BY)[number];
@@ -223,6 +224,8 @@ export default function NightReportForm({
   varianceThresholdSen,
   revenueGapThresholdSen,
   expenseCeilingSen,
+  revenueCategoryNames,
+  expenseCategoryNames,
 }: {
   date: string;
   currentDate: string;
@@ -232,6 +235,8 @@ export default function NightReportForm({
   varianceThresholdSen: number;
   revenueGapThresholdSen: number;
   expenseCeilingSen: number;
+  revenueCategoryNames: string[];
+  expenseCategoryNames: string[];
 }) {
   const router = useRouter();
   const [date, setDate] = useState(initialDate);
@@ -354,7 +359,7 @@ export default function NightReportForm({
     set((s) => {
       s.revenueLines.push({
         id: nextId.current++,
-        category: REVENUE_CATEGORIES[0],
+        category: revenueCategoryNames[0] ?? "",
         amount: "",
         note: "",
       });
@@ -365,7 +370,7 @@ export default function NightReportForm({
     set((s) => {
       s.expenses.push({
         id: nextId.current++,
-        category: EXPENSE_CATEGORIES[0],
+        category: expenseCategoryNames[0] ?? "",
         amount: "",
         paidTo: "",
         paidBy: "cash",
@@ -609,10 +614,10 @@ export default function NightReportForm({
                 style={fieldStyle}
                 value={line.category}
                 onChange={(e) =>
-                  set((s) => ((s.revenueLines[i].category = e.target.value as RevenueRow["category"]), s))
+                  set((s) => ((s.revenueLines[i].category = e.target.value), s))
                 }
               >
-                {REVENUE_CATEGORIES.map((c) => (
+                {revenueCategoryNames.map((c) => (
                   <option key={c} value={c}>
                     {c}
                   </option>
@@ -696,10 +701,10 @@ export default function NightReportForm({
                 style={fieldStyle}
                 value={e.category}
                 onChange={(ev) =>
-                  set((s) => ((s.expenses[i].category = ev.target.value as ExpenseRow["category"]), s))
+                  set((s) => ((s.expenses[i].category = ev.target.value), s))
                 }
               >
-                {EXPENSE_CATEGORIES.map((c) => (
+                {expenseCategoryNames.map((c) => (
                   <option key={c} value={c}>
                     {c}
                   </option>

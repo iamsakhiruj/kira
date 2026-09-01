@@ -5,6 +5,21 @@ import { getPendingBusinessDays } from "@/lib/businessDays";
 import { logout } from "@/app/login/actions";
 import SidebarToggle from "./sidebar-toggle";
 
+const ROLE_LABELS: Record<Role, string> = {
+  reception: "Reception",
+  manager: "Manager",
+  owner: "Owner",
+};
+
+/** "Aisha Rahman" -> "AR"; a single name -> its first letter. */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  const first = parts[0][0] ?? "";
+  const last = parts.length > 1 ? (parts[parts.length - 1][0] ?? "") : "";
+  return (first + last).toUpperCase();
+}
+
 /**
  * The one shared shell (sidebar + header) every authenticated route renders,
  * via its own layout.tsx — not a route-group restructure. Existing routes
@@ -35,6 +50,7 @@ const NAV: NavItem[] = [
     label: "Settings",
     minRole: "manager",
     children: [
+      { label: "Categories", href: "/settings/categories", minRole: "manager" },
       { label: "Payment methods", href: "/settings/payment-methods", minRole: "manager" },
       { label: "Users", href: "/settings/users", minRole: "owner" },
     ],
@@ -129,17 +145,45 @@ export default async function AppShell({
       </nav>
       {/* User info + sign out live in the sidebar itself (not a separate
           desktop-only header bar) so they're reachable the same way on
-          mobile — inside the drawer — as on desktop. */}
+          mobile — inside the drawer — as on desktop. Stacked (name+role row,
+          then sign out on its own row) rather than crammed into one row —
+          a single row here previously let the role label collide with
+          sign-out once the name was more than a couple of characters wide. */}
       <div
-        className="flex items-center justify-between border-t p-3"
+        className="flex flex-col gap-2 border-t p-3"
         style={{ borderColor: "var(--border)" }}
       >
-        <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>
-          {userName}
-        </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className="flex shrink-0 items-center justify-center rounded-full"
+            style={{
+              width: 32,
+              height: 32,
+              background: "var(--brand-tint)",
+              color: "var(--brand)",
+              fontSize: "var(--text-caption)",
+              fontWeight: 600,
+            }}
+            aria-hidden="true"
+          >
+            {initials(userName)}
+          </span>
+          <div className="flex min-w-0 flex-col">
+            <span
+              className="truncate"
+              style={{ fontSize: "var(--text-label)", color: "var(--text)" }}
+            >
+              {userName}
+            </span>
+            <span style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}>
+              {ROLE_LABELS[role]}
+            </span>
+          </div>
+        </div>
         <form action={logout}>
           <button
             type="submit"
+            className="w-full text-left"
             style={{ fontSize: "var(--text-label)", color: "var(--brand)" }}
           >
             Sign out

@@ -34,6 +34,7 @@ const ROUTE_REQUIREMENTS: { prefix: string; required?: Role }[] = [
   { prefix: "/reports", required: "manager" },
   { prefix: "/salary", required: "owner" },
   { prefix: "/partners", required: "owner" },
+  { prefix: "/settings/categories", required: "manager" },
   { prefix: "/settings/payment-methods", required: "manager" },
   { prefix: "/settings/users", required: "owner" },
 ];

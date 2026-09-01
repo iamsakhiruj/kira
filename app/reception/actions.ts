@@ -14,6 +14,7 @@ import {
   ensureBusinessDaysIndexes,
   insertBusinessDay,
 } from "@/lib/businessDays";
+import { getActiveCategories } from "@/lib/categoriesStore";
 import { recordAudit } from "@/lib/audit";
 import { formatRM } from "@/lib/money";
 
@@ -94,6 +95,40 @@ export async function submitNightReport(
     return {
       ok: false,
       error: `Revenue is ${formatRM(Math.abs(gap.gapSen))} ${sign} what collections and receivables account for. Enter a reason for the difference.`,
+    };
+  }
+
+  // Categories are DB-editable now (Phase 2 §2.3), not a compile-time enum,
+  // so the client's list can go stale between page load and submit — a
+  // category deactivated in the meantime must still be rejected here.
+  // standaloneOnly categories (e.g. "Rent") never belong on this form even
+  // if somehow submitted.
+  const [activeRevenueCats, activeExpenseCats] = await Promise.all([
+    getActiveCategories("revenue"),
+    getActiveCategories("expense"),
+  ]);
+  const validRevenueNames = new Set(
+    activeRevenueCats.filter((c) => !c.standaloneOnly).map((c) => c.name),
+  );
+  const validExpenseNames = new Set(
+    activeExpenseCats.filter((c) => !c.standaloneOnly).map((c) => c.name),
+  );
+  const badRevenueLine = input.revenueLines.find(
+    (l) => !validRevenueNames.has(l.category),
+  );
+  if (badRevenueLine) {
+    return {
+      ok: false,
+      error: `"${badRevenueLine.category}" isn't a valid revenue category — refresh the page and try again.`,
+    };
+  }
+  const badExpenseLine = input.expenses.find(
+    (e) => !validExpenseNames.has(e.category),
+  );
+  if (badExpenseLine) {
+    return {
+      ok: false,
+      error: `"${badExpenseLine.category}" isn't a valid expense category — refresh the page and try again.`,
     };
   }
 

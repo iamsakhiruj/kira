@@ -13,6 +13,15 @@
 
 import { z } from "zod";
 
+/**
+ * These two lists are no longer used for schema validation (see
+ * RevenueLineSchema / ExpenseLineSchema below) — categories are now
+ * DB-editable via the `categories` collection (`lib/categoriesStore.ts`,
+ * Phase 2 §2.3). They're kept here purely as the seed-data source, so the
+ * initial `categories` documents are guaranteed to match exactly what
+ * reception had before the migration, with no risk of retyping the list a
+ * second time somewhere else and drifting.
+ */
 export const REVENUE_CATEGORIES = [
   "Food & beverage",
   "Laundry",
@@ -49,14 +58,21 @@ const senInt = z.number().int("Amounts are stored as whole sen.");
 const nonNegSen = senInt.min(0, "Amount cannot be negative.");
 const count = z.number().int().min(0);
 
+// Category is validated against the live `categories` collection at submit
+// time (submitNightReport in app/reception/actions.ts), not a compile-time
+// enum — the list is DB-editable now. The shape stored on the document is
+// unchanged (still a plain name string), so no historical businessDays
+// document needs migrating.
+const categoryName = z.string().trim().min(1, "Choose a category.").max(60);
+
 export const RevenueLineSchema = z.object({
-  category: z.enum(REVENUE_CATEGORIES),
+  category: categoryName,
   amountSen: nonNegSen,
   note: z.string().max(200).default(""),
 });
 
 export const ExpenseLineSchema = z.object({
-  category: z.enum(EXPENSE_CATEGORIES),
+  category: categoryName,
   amountSen: nonNegSen,
   paidTo: z.string().max(120).default(""),
   paidBy: z.enum(PAID_BY),

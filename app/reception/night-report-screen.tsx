@@ -116,6 +116,8 @@ export default function NightReportScreen({
   varianceThresholdSen,
   revenueGapThresholdSen,
   expenseCeilingSen,
+  revenueCategoryNames,
+  expenseCategoryNames,
 }: {
   slots: DaySlot[];
   currentDate: string;
@@ -125,6 +127,8 @@ export default function NightReportScreen({
   varianceThresholdSen: number;
   revenueGapThresholdSen: number;
   expenseCeilingSen: number;
+  revenueCategoryNames: string[];
+  expenseCategoryNames: string[];
 }) {
   const firstMissing = slots.find((s) => s.summary === null)?.date ?? null;
   const [active, setActive] = useState<string | null>(firstMissing);
@@ -157,6 +161,8 @@ export default function NightReportScreen({
                 varianceThresholdSen={varianceThresholdSen}
                 revenueGapThresholdSen={revenueGapThresholdSen}
                 expenseCeilingSen={expenseCeilingSen}
+                revenueCategoryNames={revenueCategoryNames}
+                expenseCategoryNames={expenseCategoryNames}
               />
             </div>
           );

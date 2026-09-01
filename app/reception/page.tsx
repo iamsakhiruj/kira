@@ -4,10 +4,16 @@ import { getSettings } from "@/lib/settings";
 import {
   businessDateFor,
   lastBusinessDates,
+  datesSinceFirstReport,
   businessDateMinusDays,
   formatBusinessDateLabel,
 } from "@/lib/businessDate";
-import { getBusinessDaysByDates } from "@/lib/businessDays";
+import { getBusinessDaysByDates, getEarliestBusinessDate } from "@/lib/businessDays";
+import {
+  ensureCategoriesIndexes,
+  ensureCategoriesSeeded,
+  getActiveCategories,
+} from "@/lib/categoriesStore";
 import { totalRevenueSen } from "@/lib/nightReport";
 import NightReportScreen, {
   type DaySlot,
@@ -44,11 +50,30 @@ export default async function ReceptionHome() {
   const user = await getCurrentUser();
   const settings = await getSettings();
   const current = businessDateFor(new Date(), settings.cutoffHour);
-  const dates = lastBusinessDates(current, RECEPTION_BACKFILL_DAYS);
-  const previous = dates.at(-2) ?? current;
+  const window7 = lastBusinessDates(current, RECEPTION_BACKFILL_DAYS);
 
-  const docs = await getBusinessDaysByDates(dates);
+  await ensureCategoriesIndexes();
+  await ensureCategoriesSeeded();
+  const [docs, earliestDate, revenueCats, expenseCats] = await Promise.all([
+    getBusinessDaysByDates(window7),
+    getEarliestBusinessDate(),
+    getActiveCategories("revenue"),
+    getActiveCategories("expense"),
+  ]);
+  // The night report's own pickers never show standalone-only categories
+  // (e.g. "Rent") — those belong on the 2.3 expenses/revenue screens only.
+  const revenueCategoryNames = revenueCats
+    .filter((c) => !c.standaloneOnly)
+    .map((c) => c.name);
+  const expenseCategoryNames = expenseCats
+    .filter((c) => !c.standaloneOnly)
+    .map((c) => c.name);
   const docByDate = new Map(docs.map((d) => [String(d.date), d]));
+
+  // Never prompt for a "missing" report from before the property started
+  // using this system — that's not a gap, it just hadn't started yet.
+  const dates = datesSinceFirstReport(window7, earliestDate, current);
+  const previous = dates.at(-2) ?? current;
 
   const slots: DaySlot[] = dates
     .slice()
@@ -88,6 +113,8 @@ export default async function ReceptionHome() {
         varianceThresholdSen={settings.varianceThresholdSen}
         revenueGapThresholdSen={settings.revenueGapThresholdSen}
         expenseCeilingSen={settings.expenseCeilingSen}
+        revenueCategoryNames={revenueCategoryNames}
+        expenseCategoryNames={expenseCategoryNames}
       />
       {user && user.role !== "reception" ? <ApprovalQueue /> : null}
     </div>
