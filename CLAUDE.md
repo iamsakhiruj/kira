@@ -265,6 +265,20 @@ Minimal on purpose — just enough to make self-approval visible, not the full r
 
 ---
 
+## Employees and attendance (Phase 2 §2.4)
+
+- **Employee write access is split by field, enforced server-side per field — not by which inputs a form renders.** `lib/employees.ts`'s `MANAGER_EDITABLE_FIELDS` / `OWNER_ONLY_FIELDS` are *derived from the schemas themselves* (`Object.keys(schema.shape)`), so the allow-list can't drift from what's actually defined. `updateEmployee()` in `lib/employeesStore.ts` rejects the write outright if a manager's change set contains any key outside their allow-list, regardless of what the client sent — a genuine per-field gate, not UI-only.
+  - **Manager:** name, position, department, join date, status, contact (phone/email), notes.
+  - **Owner only:** pay type, amounts, bank details, IC/passport, EPF/SOCSO/tax numbers, work permit expiry, passport expiry, nationality.
+  - `nationality` and `passportExpiry` weren't named in either list from the instruction — grouped into owner-only alongside permit expiry as the same category of sensitive foreign-worker compliance data. `notes` defaults to manager-editable as general operational commentary. Both are judgment calls, not explicit instructions — revisit if wrong.
+- **Read access is a real server-side projection, same principle as the role-scoped queries already in this codebase.** `getEmployeesManagerView()` only ever fetches the manager-editable field set from MongoDB — the sensitive fields never leave the database for that query. This reads slightly broader than §4's literal "Names and positions" for the employee list, because a manager who can *edit* department/status/contact needs to *see* the current value to edit it — the list and the edit form are the same surface here, not split into a narrow list plus a separate detail fetch. `getEmployeesFull()` (owner) and `getEmployeeNamesForAttendance()` (name + status only, any role that reaches attendance) are separate, narrower queries for their own contexts.
+- **No delete anywhere in this module.** Status is `active | on_leave | paused | resigned`; `statusChangedAt` is computed server-side whenever `status` changes, never accepted as client input.
+- **`attendance` is one document per `{employeeId, month}`** (unique index), `days: [{day, status, note}]`. Save is per employee-row (matching that document boundary), not per-cell — a five-person, 31-day grid would otherwise be 150+ chatty writes. Manager can edit attendance (§4: Attendance is Yes for manager) even though they can't see an employee's sensitive fields — the grid only ever needs name + day status.
+- **No colour-coding on the attendance grid.** Six status values (present/annual_leave/sick_leave/public_holiday/unpaid_absence/rest_day) is exactly the kind of thing that invites a colour-coded calendar, but green/red are money-only (design system rule 2) and there's no meaningful "attention" signal here for amber either — a plain abbreviated `<select>` per cell avoids inventing a colour scheme that doesn't map to anything the rules allow.
+- **No salary calculation anywhere in this step** — the grid is pure record-keeping. The Employment Act distinction it exists to capture (§3: only `unpaid_absence` reduces a monthly-rated wage) gets applied to an actual pay figure in Step 2.5, not here.
+
+---
+
 ## Conventions
 
 - Server Components by default; Client Components only where there's interaction
