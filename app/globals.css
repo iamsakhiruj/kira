@@ -1,0 +1,160 @@
+/* =========================================================================
+   Hotel Bintang KL — design tokens & primitives
+   -------------------------------------------------------------------------
+   This file defines the whole design system as CSS custom properties.
+   Components read the variables and the utility classes below — they do NOT
+   hard-code hex values. Change a colour here, it changes everywhere.
+
+   TWO INVARIANTS — read these before editing anything in this file:
+
+     1. ORANGE IS INTERACTION, NEVER DATA.
+        --brand and its variants are for buttons, active nav, focus rings,
+        and the logo. If a number, chart bar, or badge is orange, that is a
+        bug. Orange must never encode a value.
+
+     2. GREEN IS MONEY IN, RED IS MONEY OUT — AND NOTHING ELSE USES THEM.
+        The money colours are applied ONLY through the .money-in / .money-out
+        utilities below. No component references the green or red hex (or
+        their vars) directly. If the meaning of a colour changes, it changes
+        in one place. Amber (--warn) is for attention — overdue, variance out
+        of tolerance, expiring permits — never for money.
+
+   Colour must never be the only signal: a negative amount carries a minus
+   sign as well as red, so it survives greyscale printing and colour blindness.
+   ========================================================================= */
+
+:root {
+  color-scheme: light;
+
+  /* --- Brand — actions / interaction ONLY, never data ------------------- */
+  --brand:         #D85A30;
+  --brand-hover:   #C24E28;
+  --brand-tint:    #FAECE7;
+  --on-brand:      #FFFFFF;
+
+  /* --- Money direction — semantic pairs --------------------------------- */
+  /* Applied ONLY via .money-in / .money-out. Do not reference these vars
+     (or their hex) anywhere else — go through the utility class instead. */
+  --money-in:      #0F6E56;
+  --money-in-bg:   #E1F5EE;
+  --money-out:     #A32D2D;
+  --money-out-bg:  #FCEBEB;
+
+  /* --- Warning — attention, never money --------------------------------- */
+  --warn:          #854F0B;
+  --warn-bg:       #FAEEDA;
+
+  /* --- Neutrals --------------------------------------------------------- */
+  --text:          #2C2C2A;
+  --text-muted:    #5F5E5A;
+  --text-faint:    #888780;
+  --surface:       #FFFFFF;
+  --page:          #F7F7F5;
+  --border:        #E5E3DC;
+  --border-strong: #C9C8BF;
+
+  /* --- Typography ------------------------------------------------------- */
+  /* One family. -apple-system resolves to SF Pro on Apple devices; every
+     other platform falls through to self-hosted Inter, exposed by
+     next/font/google as --font-inter (wired up in app/layout.tsx). */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", var(--font-inter),
+               "Segoe UI", Roboto, system-ui, sans-serif;
+
+  /* Two weights only. Never 700. */
+  --weight-regular: 400;
+  --weight-medium:  600;
+
+  --text-page-title: 22px; /* 600 */
+  --text-section:    17px; /* 600 */
+  --text-body:       15px; /* 400 */
+  --text-label:      13px; /* 400 */
+  --text-caption:    12px; /* 400 */
+  --text-hero-money: 34px; /* 600 — bumps to 44px on desktop, see below */
+
+  /* --- Shape ------------------------------------------------------------ */
+  --radius:        8px;  /* buttons, inputs, small elements */
+  --radius-card:  12px;  /* cards */
+  --border-w:      1px;
+
+  /* --- Spacing scale — 4 / 8 / 12 / 16 / 24 / 32. Nothing between. ------- */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* --- Interaction ------------------------------------------------------ */
+  --touch-target: 44px; /* minimum tap height on any reception screen */
+}
+
+/* Hero money figure: 34px on mobile, 44px on desktop. */
+@media (min-width: 768px) {
+  :root {
+    --text-hero-money: 44px;
+  }
+}
+
+/* --- Base ---------------------------------------------------------------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--page);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  font-weight: var(--weight-regular);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Focus ring — visible on every interactive element. Never remove outlines. */
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* --- Money utilities ----------------------------------------------------- */
+/* .money         → alignment for ANY amount (tables, cards, inputs, totals).
+   .money-in      → the ONLY place the green is applied.
+   .money-out     → the ONLY place the red is applied.
+   Compose them:  <span class="money money-out">-1,234.50</span>            */
+
+/* Every element showing a money amount MUST carry .money, or columns of
+   figures will not align and become hard to scan. No exceptions. */
+.money {
+  font-variant-numeric: tabular-nums lining;
+  text-align: right;
+}
+
+.money-in {
+  color: var(--money-in);
+}
+
+.money-out {
+  color: var(--money-out);
+}
+
+/* --- Motion -------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
