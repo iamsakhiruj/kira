@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:ping": "node --env-file=.env.local scripts/ping-db.mjs",
-    "seed": "tsx scripts/seed-owner.ts"
+    "seed": "tsx scripts/seed-owner.ts",
+    "check-db": "tsx scripts/check-db.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.0",
