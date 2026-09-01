@@ -52,9 +52,9 @@ export async function submitNightReport(
     return {
       ok: false,
       error:
-        user.role === "owner"
-          ? "That date is in the future."
-          : "That date is in the future, or more than 7 days ago — ask the owner to enter it.",
+        user.role === "reception"
+          ? "That date is in the future, or more than 7 days ago — ask the manager or owner to enter it."
+          : "That date is in the future.",
     };
   }
   const date = payload.date;

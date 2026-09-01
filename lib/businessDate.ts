@@ -113,19 +113,21 @@ export function lastBusinessDates(current: string, days: number): string[] {
  * Whether `role` may submit a night report for `date`, given today's
  * business date is `current`. Nobody may pick a future date. Reception is
  * limited to the last `backfillDays` business dates (today plus the
- * `backfillDays - 1` before it, default 7 total) — older than that needs the
- * owner, who has no lower bound. This is enforced here so the server and any
- * client-side picker bounds share one rule; the server call is the one that
- * actually matters (CLAUDE.md: never trust the client's date).
+ * `backfillDays - 1` before it, default 7 total) — older than that needs
+ * manager or owner, neither of which has a lower bound (manager can already
+ * approve a day, a Phase 1 owner-tier action, so this isn't a new
+ * elevation). This is enforced here so the server and any client-side
+ * picker bounds share one rule; the server call is the one that actually
+ * matters (CLAUDE.md: never trust the client's date).
  */
 export function canSubmitDate(
   date: string,
   current: string,
-  role: "reception" | "owner",
+  role: "reception" | "manager" | "owner",
   backfillDays: number = 7,
 ): boolean {
   if (date > current) return false;
-  if (role === "owner") return true;
+  if (role !== "reception") return true;
   return date > businessDateMinusDays(current, backfillDays);
 }
 

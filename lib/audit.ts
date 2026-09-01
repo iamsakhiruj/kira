@@ -25,7 +25,7 @@ export const AuditEntrySchema = z.object({
   /** _id of the user who made the change. */
   actorId: z.string().min(1, "audit: actorId is required"),
   /** Their role at the time, for quick filtering. */
-  actorRole: z.enum(["reception", "owner"]).optional(),
+  actorRole: z.enum(["reception", "manager", "owner"]).optional(),
   action: z.enum(AUDIT_ACTIONS),
   /** The collection written to, e.g. "businessDays". */
   collection: z.string().min(1, "audit: collection is required"),

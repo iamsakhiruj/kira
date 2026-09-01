@@ -137,6 +137,7 @@ describe("canSubmitDate", () => {
 
   it("nobody may submit a future date", () => {
     expect(canSubmitDate("2026-09-08", CURRENT, "reception")).toBe(false);
+    expect(canSubmitDate("2026-09-08", CURRENT, "manager")).toBe(false);
     expect(canSubmitDate("2026-09-08", CURRENT, "owner")).toBe(false);
   });
 
@@ -152,6 +153,11 @@ describe("canSubmitDate", () => {
   it("owner may submit any past date, no lower limit", () => {
     expect(canSubmitDate("2026-08-31", CURRENT, "owner")).toBe(true);
     expect(canSubmitDate("2020-01-01", CURRENT, "owner")).toBe(true);
+  });
+
+  it("manager has no lower limit either — same as owner for this check", () => {
+    expect(canSubmitDate("2026-08-31", CURRENT, "manager")).toBe(true);
+    expect(canSubmitDate("2020-01-01", CURRENT, "manager")).toBe(true);
   });
 
   it("a custom backfillDays window is respected", () => {

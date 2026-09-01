@@ -10,15 +10,30 @@
  */
 
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, verifySessionToken, isAuthorized } from "@/lib/session";
+import {
+  SESSION_COOKIE,
+  verifySessionToken,
+  isAuthorized,
+  type Role,
+} from "@/lib/session";
+
+// One entry per gated route prefix. None of these nest inside another (e.g.
+// /settings/payment-methods and /settings/users are siblings, not a shared
+// /settings parent with sections hidden inside) — see those routes'
+// layout.tsx for why that matters. Order doesn't matter as long as that
+// holds; add new prefixes here as Phase 2 routes land.
+const ROUTE_REQUIREMENTS: { prefix: string; required: Role }[] = [
+  { prefix: "/owner", required: "owner" },
+  { prefix: "/reception", required: "reception" },
+  { prefix: "/settings/payment-methods", required: "manager" },
+  { prefix: "/settings/users", required: "owner" },
+];
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const required = pathname.startsWith("/owner")
-    ? "owner"
-    : pathname.startsWith("/reception")
-      ? "reception"
-      : undefined;
+  const required = ROUTE_REQUIREMENTS.find((r) =>
+    pathname.startsWith(r.prefix),
+  )?.required;
 
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   const session = token ? await verifySessionToken(token) : null;
@@ -41,5 +56,5 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/owner/:path*", "/reception/:path*"],
+  matcher: ["/owner/:path*", "/reception/:path*", "/settings/:path*"],
 };

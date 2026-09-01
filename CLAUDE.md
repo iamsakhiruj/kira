@@ -66,11 +66,21 @@ Once the owner approves a business day, it cannot be edited. Corrections are new
 
 Both reduce cash on hand and must post a cash-out line to that day's night report, or the drawer will not balance. Both must be excluded from the profit calculation. See spec 5.4 and 8.2.
 
-### 7. Reception sees very little — owner is not restricted
+### 7. Reception sees very little; manager runs operations, not money; owner is not restricted
 
-Reception: today and yesterday. Their own entries. No profit figures, no salary figures, no past months, no supplier balances, no drawing history. Enforce this server-side on every query — never by hiding UI elements.
+Three roles now (Phase 2 §4/old §3 added `manager` between reception and owner).
 
-The owner has no equivalent restriction, including on reception's own screens: **in a small hotel the owner covers shifts**, so they can reach `/reception/*` and submit night reports like any reception user — `/owner/*` stays owner-only. Role hierarchy: **owner ≥ reception**. `isAuthorized()` in `lib/session.ts` implements this as a rank comparison (`RANK[role] >= RANK[required]`), checked identically by `proxy.ts` (the coarse Edge gate) and `requireUser()` (the real one) — see the Auth section below.
+**Reception:** today and yesterday (plus backdating within the 7-day window — see Night report below). Their own entries. No profit figures, no salary figures, no past months, no supplier balances, no drawing history.
+
+**Manager:** day-to-day operations — approve a day, apply a correction, expenses, revenue entries, attendance, advances, employee list (names and positions only, not pay). **Explicitly not:** salaries and payroll, partners/shares/drawings, profit and allocations, manage users. A manager who can see revenue entries and expenses can already estimate profit — that's accepted (Phase 2 §4/old §3 open question), but salary and partner figures stay owner-only regardless.
+
+**Owner:** unrestricted, including on reception's own screens — **in a small hotel the owner covers shifts**, so they can reach `/reception/*` and submit night reports like any reception user.
+
+Enforce all of this server-side on every query — never by hiding UI elements.
+
+**Role hierarchy: owner ≥ manager ≥ reception.** `isAuthorized()` in `lib/session.ts` implements this as a rank comparison (`RANK[role] >= RANK[required]`), checked identically by `proxy.ts` (the coarse Edge gate, a flat list of `{prefix, required}` entries — see the file, order-independent as long as no prefix nests inside another) and `requireUser()` (the real one) — see the Auth section below. Manager being a rank strictly between the other two means "not reception" is no longer the same test as "owner" — a route or query gated at `owner` really does exclude manager, not just reception.
+
+**One route, one gate.** When a feature has a part only the owner should reach (e.g. Settings' payment methods vs. users), that's two separately-gated routes (`/settings/payment-methods`, `/settings/users`), not one route gated at the lower tier with the sensitive part hidden inside. A manager-gated parent route with an owner-only section hidden in its UI would still be reachable by URL.
 
 ---
 

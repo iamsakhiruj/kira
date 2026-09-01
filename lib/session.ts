@@ -13,7 +13,7 @@ export const SESSION_TTL_SECONDS = 60 * 60 * 12; // 12 hours
 
 const ALG = "HS256";
 
-export type Role = "reception" | "owner";
+export type Role = "reception" | "manager" | "owner";
 
 export interface SessionPayload {
   /** User _id as a string. */
@@ -22,8 +22,14 @@ export interface SessionPayload {
   name: string;
 }
 
-/** Role hierarchy: owner can reach reception routes; reception cannot reach owner routes. */
-const RANK: Record<Role, number> = { reception: 1, owner: 2 };
+/**
+ * Role hierarchy: owner ≥ manager ≥ reception. A higher tier can reach any
+ * route gated to a lower or equal one; a lower tier can never reach a higher
+ * one. Manager sits strictly between the other two — day-to-day operations,
+ * but not salary, partners, or profit (CLAUDE.md rule 7 spells out the
+ * exclusions; this map only encodes the ordering).
+ */
+const RANK: Record<Role, number> = { reception: 1, manager: 2, owner: 3 };
 
 /**
  * Is a user with `role` allowed where `required` is needed? With no
@@ -70,7 +76,7 @@ export async function verifySessionToken(
     const name = payload.name;
     if (
       typeof sub !== "string" ||
-      (role !== "reception" && role !== "owner") ||
+      (role !== "reception" && role !== "manager" && role !== "owner") ||
       typeof name !== "string"
     ) {
       return null;
