@@ -121,16 +121,16 @@ ownerTransactions  recurringObligations obligationOccurrences
 
 The full token set lives in `app/globals.css` as CSS variables — that file is the source of truth for values. This section is the source of truth for the *rules*. Components read the variables and utility classes; they never hard-code hex.
 
-**Pending wiring (Step 1 blocker).** The font stack references `var(--font-inter)`, which must be provided by `next/font/google` in `app/layout.tsx`:
+**Font wiring (done in Step 1).** The font stack references `var(--font-inter)`, provided by `next/font/google` in `app/layout.tsx`:
 
 ```ts
-// app/layout.tsx — added during Step 1 scaffold
+// app/layout.tsx
 import { Inter } from "next/font/google";
 const inter = Inter({ subsets: ["latin"], weight: ["400", "600"], display: "swap", variable: "--font-inter" });
-// apply inter.variable to <html>
+// inter.variable applied to <html>
 ```
 
-Until this exists, non-Apple devices fall back past a missing Inter to Segoe UI / Roboto. **Step 1 is not "done" until this wiring is in place.**
+Don't remove this — without it, non-Apple devices fall back past a missing Inter to Segoe UI / Roboto.
 
 ### Typography
 

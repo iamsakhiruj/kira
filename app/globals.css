@@ -1,3 +1,5 @@
+@import "tailwindcss";
+
 /* =========================================================================
    Hotel Bintang KL — design tokens & primitives
    -------------------------------------------------------------------------
@@ -86,6 +88,31 @@
 
   /* --- Interaction ------------------------------------------------------ */
   --touch-target: 44px; /* minimum tap height on any reception screen */
+}
+
+/* Expose tokens to Tailwind v4 so utilities map to the same variables.
+   NOTE: --money-in / --money-out are deliberately NOT exposed here. Money
+   colours must only ever be applied through .money-in / .money-out, so there
+   is no bg-money-in / text-money-out utility to reach for by accident. */
+@theme inline {
+  --color-brand:        var(--brand);
+  --color-brand-hover:  var(--brand-hover);
+  --color-brand-tint:   var(--brand-tint);
+  --color-on-brand:     var(--on-brand);
+
+  --color-warn:         var(--warn);
+  --color-warn-bg:      var(--warn-bg);
+
+  --color-text:         var(--text);
+  --color-text-muted:   var(--text-muted);
+  --color-text-faint:   var(--text-faint);
+  --color-surface:      var(--surface);
+  --color-page:         var(--page);
+  --color-border:       var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --font-sans:          var(--font-sans);
+  --radius-card:        var(--radius-card);
 }
 
 /* Hero money figure: 34px on mobile, 44px on desktop. */

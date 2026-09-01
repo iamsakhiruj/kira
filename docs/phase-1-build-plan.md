@@ -34,8 +34,8 @@ These carry all the arithmetic that matters. Unit test them properly; the rest o
 
 **Design system wiring (from `app/globals.css`, done in Step 0):**
 
-- [ ] **Merge design tokens into scaffolded `globals.css`.** `create-next-app` generates its own `app/globals.css` and will overwrite ours. Before scaffolding: `cp app/globals.css app/globals.css.bak`. After scaffolding: merge the tokens/utilities from the backup into the generated file, then delete `app/globals.css.bak`.
-- [ ] **Wire `next/font/google` in `app/layout.tsx`.** The font stack references `var(--font-inter)`, which does not exist until Inter is loaded (weights 400/600, `display: swap`, `variable: "--font-inter"`) and `inter.variable` is applied to `<html>`. Until then, non-Apple devices fall back past a missing font. **This is a blocker on Step 1 being "done".**
+- [x] **Merge design tokens into scaffolded `globals.css`.** Done: scaffolded into a temp dir (`create-next-app` refuses a non-empty target), backed up to `app/globals.css.bak`, merged our tokens with Tailwind v4's `@import "tailwindcss"` + a scoped `@theme`, deleted the backup.
+- [x] **Wire `next/font/google` in `app/layout.tsx`.** Done: `Inter({ weight: ["400","600"], display: "swap", variable: "--font-inter" })`, `inter.variable` applied to `<html>`.
 
 **Done when:** app builds, connects to Mongo, those three modules pass their tests, and both checklist items above are complete.
 
