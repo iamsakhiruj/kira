@@ -67,17 +67,84 @@ export function businessDateFor(
   return `${year}-${pad(month)}-${pad(day)}`;
 }
 
+function parseBusinessDate(date: string, fnName: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) {
+    throw new Error(`${fnName}: date must be YYYY-MM-DD.`);
+  }
+  // Noon UTC so subtracting whole days never straddles a boundary.
+  return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12));
+}
+
+/**
+ * `date` minus `n` calendar days, as a business-date string. `n` may be 0
+ * (returns `date` unchanged). The general form `previousBusinessDate` is
+ * built on (n = 1).
+ */
+export function businessDateMinusDays(date: string, n: number): string {
+  const d = parseBusinessDate(date, "businessDateMinusDays");
+  d.setUTCDate(d.getUTCDate() - n);
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+}
+
 /**
  * The business date one calendar day before the given one. Used to offer
  * reception "yesterday" when a night report was missed. Handles month and
  * year boundaries.
  */
 export function previousBusinessDate(date: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  if (!m) {
-    throw new Error("previousBusinessDate: date must be YYYY-MM-DD.");
+  return businessDateMinusDays(date, 1);
+}
+
+/**
+ * The last `days` business dates ending at (and including) `current`,
+ * oldest first. e.g. lastBusinessDates("2026-09-07", 3) is
+ * ["2026-09-05", "2026-09-06", "2026-09-07"].
+ */
+export function lastBusinessDates(current: string, days: number): string[] {
+  const dates: string[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    dates.push(businessDateMinusDays(current, i));
   }
-  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12));
-  d.setUTCDate(d.getUTCDate() - 1);
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  return dates;
+}
+
+/**
+ * Whether `role` may submit a night report for `date`, given today's
+ * business date is `current`. Nobody may pick a future date. Reception is
+ * limited to the last `backfillDays` business dates (today plus the
+ * `backfillDays - 1` before it, default 7 total) — older than that needs the
+ * owner, who has no lower bound. This is enforced here so the server and any
+ * client-side picker bounds share one rule; the server call is the one that
+ * actually matters (CLAUDE.md: never trust the client's date).
+ */
+export function canSubmitDate(
+  date: string,
+  current: string,
+  role: "reception" | "owner",
+  backfillDays: number = 7,
+): boolean {
+  if (date > current) return false;
+  if (role === "owner") return true;
+  return date > businessDateMinusDays(current, backfillDays);
+}
+
+// Fixed lookup tables rather than Intl.DateTimeFormat's locale-dependent
+// short forms — ICU gives "Sept" for en-GB/en-MY on this runtime, not "Sep",
+// which would silently drift from the exact copy this label is used for.
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_LABELS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/**
+ * A human label for a business date, e.g. "2026-09-03" -> "Thu 3 Sep". A
+ * business date is already a calendar label (see the module doc), so this
+ * reads it as a plain UTC calendar date — no KL/timezone conversion, because
+ * there is no instant to convert.
+ */
+export function formatBusinessDateLabel(date: string): string {
+  const d = parseBusinessDate(date, "formatBusinessDateLabel");
+  return `${WEEKDAY_LABELS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTH_LABELS[d.getUTCMonth()]}`;
 }

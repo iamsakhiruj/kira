@@ -24,6 +24,15 @@ export async function getBusinessDay(date: string): Promise<Document | null> {
   return col.findOne({ date });
 }
 
+/** Batch lookup for a set of dates — one query instead of N. */
+export async function getBusinessDaysByDates(
+  dates: string[],
+): Promise<WithId<Document>[]> {
+  if (dates.length === 0) return [];
+  const col = await collection();
+  return col.find({ date: { $in: dates } }).toArray();
+}
+
 export async function getBusinessDayById(
   id: string,
 ): Promise<WithId<Document> | null> {

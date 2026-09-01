@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { businessDateFor, previousBusinessDate } from "./businessDate";
+import {
+  businessDateFor,
+  previousBusinessDate,
+  businessDateMinusDays,
+  lastBusinessDates,
+  canSubmitDate,
+  formatBusinessDateLabel,
+} from "./businessDate";
 
 /**
  * KL is UTC+8 with no daylight saving. To construct an instant at a given KL
@@ -84,5 +91,92 @@ describe("previousBusinessDate", () => {
 
   it("rejects a malformed date", () => {
     expect(() => previousBusinessDate("nope")).toThrow();
+  });
+});
+
+describe("businessDateMinusDays", () => {
+  it("steps back n days", () => {
+    expect(businessDateMinusDays("2026-09-07", 6)).toBe("2026-09-01");
+  });
+
+  it("n=0 returns the date unchanged", () => {
+    expect(businessDateMinusDays("2026-09-07", 0)).toBe("2026-09-07");
+  });
+
+  it("handles month and year boundaries", () => {
+    expect(businessDateMinusDays("2026-09-03", 5)).toBe("2026-08-29");
+    expect(businessDateMinusDays("2026-01-02", 5)).toBe("2025-12-28");
+  });
+
+  it("agrees with previousBusinessDate at n=1", () => {
+    expect(businessDateMinusDays("2026-09-07", 1)).toBe(
+      previousBusinessDate("2026-09-07"),
+    );
+  });
+});
+
+describe("lastBusinessDates", () => {
+  it("returns the last N dates ending at current, oldest first", () => {
+    expect(lastBusinessDates("2026-09-07", 3)).toEqual([
+      "2026-09-05",
+      "2026-09-06",
+      "2026-09-07",
+    ]);
+  });
+
+  it("the 7-day reception window is today plus the 6 days before it", () => {
+    const dates = lastBusinessDates("2026-09-07", 7);
+    expect(dates[0]).toBe("2026-09-01");
+    expect(dates.at(-1)).toBe("2026-09-07");
+    expect(dates).toHaveLength(7);
+  });
+});
+
+describe("canSubmitDate", () => {
+  const CURRENT = "2026-09-07";
+
+  it("nobody may submit a future date", () => {
+    expect(canSubmitDate("2026-09-08", CURRENT, "reception")).toBe(false);
+    expect(canSubmitDate("2026-09-08", CURRENT, "owner")).toBe(false);
+  });
+
+  it("reception may submit today or any of the 6 days before it", () => {
+    expect(canSubmitDate(CURRENT, CURRENT, "reception")).toBe(true);
+    expect(canSubmitDate("2026-09-01", CURRENT, "reception")).toBe(true); // 6 days back
+  });
+
+  it("reception may not submit older than 7 days total", () => {
+    expect(canSubmitDate("2026-08-31", CURRENT, "reception")).toBe(false); // 7 days back
+  });
+
+  it("owner may submit any past date, no lower limit", () => {
+    expect(canSubmitDate("2026-08-31", CURRENT, "owner")).toBe(true);
+    expect(canSubmitDate("2020-01-01", CURRENT, "owner")).toBe(true);
+  });
+
+  it("a custom backfillDays window is respected", () => {
+    // backfillDays=3 means 3 selectable dates total: 09-07, 09-06, 09-05.
+    expect(canSubmitDate("2026-09-05", CURRENT, "reception", 3)).toBe(true);
+    expect(canSubmitDate("2026-09-04", CURRENT, "reception", 3)).toBe(false);
+  });
+});
+
+describe("formatBusinessDateLabel", () => {
+  it("formats as weekday, day, short month", () => {
+    // 2026-09-03 is a Thursday.
+    expect(formatBusinessDateLabel("2026-09-03")).toBe("Thu 3 Sep");
+  });
+
+  it("always uses a 3-letter month, not ICU's locale-dependent 'Sept'", () => {
+    expect(formatBusinessDateLabel("2026-09-01")).toContain(" Sep");
+    expect(formatBusinessDateLabel("2026-09-01")).not.toContain("Sept");
+  });
+
+  it("handles a year boundary", () => {
+    expect(formatBusinessDateLabel("2026-01-01")).toBe("Thu 1 Jan");
+  });
+
+  it("rejects a malformed date", () => {
+    expect(() => formatBusinessDateLabel("nope")).toThrow();
   });
 });

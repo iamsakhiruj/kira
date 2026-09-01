@@ -2,7 +2,7 @@
 
 import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
-import { businessDateFor, previousBusinessDate } from "@/lib/businessDate";
+import { businessDateFor, canSubmitDate } from "@/lib/businessDate";
 import {
   NightReportInputSchema,
   reconcile,
@@ -42,18 +42,29 @@ export async function submitNightReport(
   }
   const input = parsed.data;
 
-  // The business date is decided by the server. The client may only ask for
-  // one of the two legal dates: the current business day or the one before.
+  // The business date is decided by the server; the client's requested date
+  // is only ever a request, validated against the caller's own role.
+  // Reception: today or the 6 days before it. Owner: any past date. Nobody:
+  // a future date.
   const settings = await getSettings();
   const current = businessDateFor(new Date(), settings.cutoffHour);
-  const previous = previousBusinessDate(current);
-  if (payload.date !== current && payload.date !== previous) {
+  if (!canSubmitDate(payload.date, current, user.role)) {
     return {
       ok: false,
-      error: "You can only submit tonight's report or yesterday's.",
+      error:
+        user.role === "owner"
+          ? "That date is in the future."
+          : "That date is in the future, or more than 7 days ago — ask the owner to enter it.",
     };
   }
   const date = payload.date;
+  const enteredLate = date !== current;
+  if (enteredLate && !input.enteredLateReason.trim()) {
+    return {
+      ok: false,
+      error: `This report is for ${date}, not today — enter a short reason it's being entered late.`,
+    };
+  }
 
   // Recompute the variance server-side — never trust the client's figure.
   const recon = reconcile(input);
@@ -116,6 +127,8 @@ export async function submitNightReport(
     },
     revenueGapSen: gap.gapSen,
     revenueGapReason: input.revenueGapReason.trim(),
+    enteredLate,
+    enteredLateReason: enteredLate ? input.enteredLateReason.trim() : "",
     remarks: input.remarks.trim(),
     submittedBy: user.sub,
     submittedAt: now,

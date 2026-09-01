@@ -1,7 +1,13 @@
-import type { Document } from "mongodb";
+import type { Document, WithId } from "mongodb";
+import { getCurrentUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
-import { businessDateFor, previousBusinessDate } from "@/lib/businessDate";
-import { getBusinessDay } from "@/lib/businessDays";
+import {
+  businessDateFor,
+  lastBusinessDates,
+  businessDateMinusDays,
+  formatBusinessDateLabel,
+} from "@/lib/businessDate";
+import { getBusinessDaysByDates } from "@/lib/businessDays";
 import { totalRevenueSen } from "@/lib/nightReport";
 import NightReportScreen, {
   type DaySlot,
@@ -11,7 +17,9 @@ import NightReportScreen, {
 // The report and cash count depend on request-time data; never prerender.
 export const dynamic = "force-dynamic";
 
-function summarize(doc: Document): DaySummary {
+const RECEPTION_BACKFILL_DAYS = 7;
+
+function summarize(doc: WithId<Document>): DaySummary {
   const roomRevenueSen: number = doc.rooms?.revenueSen ?? 0;
   const revenueLines: { amountSen: number }[] = doc.revenueLines ?? [];
   return {
@@ -28,31 +36,49 @@ function summarize(doc: Document): DaySummary {
 }
 
 export default async function ReceptionHome() {
+  // Cheap, JWT-only — a UI hint (the date picker's lower bound), not the
+  // security decision. The layout's requireUser("reception") already gated
+  // this route (owner passes via the role hierarchy); submitNightReport()
+  // re-checks the role authoritatively regardless of what's shown here.
+  const user = await getCurrentUser();
   const settings = await getSettings();
   const current = businessDateFor(new Date(), settings.cutoffHour);
-  const previous = previousBusinessDate(current);
+  const dates = lastBusinessDates(current, RECEPTION_BACKFILL_DAYS);
+  const previous = dates.at(-2) ?? current;
 
-  const [currentDoc, previousDoc] = await Promise.all([
-    getBusinessDay(current),
-    getBusinessDay(previous),
-  ]);
+  const docs = await getBusinessDaysByDates(dates);
+  const docByDate = new Map(docs.map((d) => [String(d.date), d]));
 
-  const slots: DaySlot[] = [
-    {
-      date: current,
-      label: `Tonight — ${current}`,
-      summary: currentDoc ? summarize(currentDoc) : null,
-    },
-    {
-      date: previous,
-      label: `Yesterday — ${previous}`,
-      summary: previousDoc ? summarize(previousDoc) : null,
-    },
-  ];
+  const slots: DaySlot[] = dates
+    .slice()
+    .reverse() // newest first: tonight, yesterday, then older missing days
+    .map((date) => {
+      const doc = docByDate.get(date);
+      const isRecent = date === current || date === previous;
+      const label = isRecent
+        ? date === current
+          ? `Tonight — ${date}`
+          : `Yesterday — ${date}`
+        : formatBusinessDateLabel(date);
+      return {
+        date,
+        label,
+        isRecent,
+        summary: doc ? summarize(doc) : null,
+      };
+    });
+
+  const minDate =
+    user?.role === "owner"
+      ? undefined
+      : businessDateMinusDays(current, RECEPTION_BACKFILL_DAYS - 1);
 
   return (
     <NightReportScreen
       slots={slots}
+      currentDate={current}
+      minDate={minDate}
+      maxDate={current}
       defaults={{
         roomsAvailable: settings.roomsAvailable,
         openingFloatSen: settings.openingFloatSen,

@@ -20,6 +20,10 @@ export interface DaySummary {
 export interface DaySlot {
   date: string;
   label: string;
+  /** Today or yesterday — gets the short "Missing — tap to fill in" copy
+   * instead of the full "No report for <label> — add it" prompt. Computed
+   * server-side; the client never derives this from a date comparison. */
+  isRecent: boolean;
   summary: DaySummary | null;
 }
 
@@ -105,12 +109,18 @@ function SubmittedCard({
 
 export default function NightReportScreen({
   slots,
+  currentDate,
+  minDate,
+  maxDate,
   defaults,
   varianceThresholdSen,
   revenueGapThresholdSen,
   expenseCeilingSen,
 }: {
   slots: DaySlot[];
+  currentDate: string;
+  minDate: string | undefined;
+  maxDate: string;
   defaults: { roomsAvailable: number | null; openingFloatSen: number | null };
   varianceThresholdSen: number;
   revenueGapThresholdSen: number;
@@ -140,6 +150,9 @@ export default function NightReportScreen({
               </h1>
               <NightReportForm
                 date={slot.date}
+                currentDate={currentDate}
+                minDate={minDate}
+                maxDate={maxDate}
                 defaults={defaults}
                 varianceThresholdSen={varianceThresholdSen}
                 revenueGapThresholdSen={revenueGapThresholdSen}
@@ -156,10 +169,18 @@ export default function NightReportScreen({
             className="rounded-card border p-4 text-left"
             style={{ background: "var(--surface)", borderColor: "var(--border-strong)" }}
           >
-            <div style={{ fontWeight: 600 }}>{slot.label}</div>
-            <div style={{ fontSize: "var(--text-label)", color: "var(--brand)" }}>
-              Missing — tap to fill in
-            </div>
+            {slot.isRecent ? (
+              <>
+                <div style={{ fontWeight: 600 }}>{slot.label}</div>
+                <div style={{ fontSize: "var(--text-label)", color: "var(--brand)" }}>
+                  Missing — tap to fill in
+                </div>
+              </>
+            ) : (
+              <div style={{ fontWeight: 600, color: "var(--brand)" }}>
+                No report for {slot.label} — add it
+              </div>
+            )}
           </button>
         );
       })}

@@ -15,6 +15,7 @@ import {
   revparSen,
   totalRevenueSen,
 } from "@/lib/nightReport";
+import { draftKeyFor, switchDraftDate } from "@/lib/draftStorage";
 import { submitNightReport } from "./actions";
 
 type Amt = string; // raw user input, parsed to sen with lib/money
@@ -59,6 +60,7 @@ interface FormState {
   remarks: string;
   varianceReason: string;
   revenueGapReason: string;
+  enteredLateReason: string;
 }
 
 interface Defaults {
@@ -100,6 +102,7 @@ function initialState(defaults: Defaults): FormState {
     remarks: "",
     varianceReason: "",
     revenueGapReason: "",
+    enteredLateReason: "",
   };
 }
 
@@ -200,47 +203,95 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
+/** Highest row id already in use in a loaded draft, so newly added rows
+ * never reuse an id from a different date's draft — `nextId` is a ref that
+ * persists across date switches, but a freshly *mounted* component always
+ * restarts it at 1, which could otherwise collide with ids already present
+ * in whatever draft gets loaded (on mount, or on switching to a date with
+ * its own existing draft). */
+function maxRowId(state: FormState): number {
+  const ids = [...state.revenueLines, ...state.expenses].map((r) => r.id);
+  return ids.length ? Math.max(...ids) : 0;
+}
+
 export default function NightReportForm({
-  date,
+  date: initialDate,
+  currentDate,
+  minDate,
+  maxDate,
   defaults,
   varianceThresholdSen,
   revenueGapThresholdSen,
   expenseCeilingSen,
 }: {
   date: string;
+  currentDate: string;
+  minDate: string | undefined;
+  maxDate: string;
   defaults: Defaults;
   varianceThresholdSen: number;
   revenueGapThresholdSen: number;
   expenseCeilingSen: number;
 }) {
   const router = useRouter();
-  const draftKey = `hbkl:nr:${date}`;
+  const [date, setDate] = useState(initialDate);
   const [state, setState] = useState<FormState>(() => initialState(defaults));
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loaded = useRef(false);
   const nextId = useRef(1);
 
-  // Load any locally saved draft (client only).
+  // Load any locally saved draft for the initial date, once, on mount
+  // (client only — localStorage doesn't exist during SSR, which is why this
+  // has to be an effect rather than a lazy useState initializer). Date
+  // changes after mount are handled explicitly by handleDateChange below,
+  // not by re-running this effect — it must only ever see the date this
+  // component was first opened with.
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(draftKey);
-      if (raw) setState(JSON.parse(raw) as FormState);
+      const raw = localStorage.getItem(draftKeyFor(initialDate));
+      if (raw) {
+        const loadedState = JSON.parse(raw) as FormState;
+        setState(loadedState);
+        nextId.current = maxRowId(loadedState) + 1;
+      }
     } catch {
       // ignore a corrupt draft
     }
     loaded.current = true;
-  }, [draftKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only by design
+  }, []);
 
   // Autosave so a dropped connection at 1am doesn't lose the entry.
   useEffect(() => {
     if (!loaded.current) return;
     try {
-      localStorage.setItem(draftKey, JSON.stringify(state));
+      localStorage.setItem(draftKeyFor(date), JSON.stringify(state));
     } catch {
       // storage full / unavailable — nothing we can do, keep going
     }
-  }, [state, draftKey]);
+  }, [state, date]);
+
+  // Switching dates must never lose the entry for the date being left — see
+  // lib/draftStorage.ts. Saves the outgoing date's state under its own key
+  // first, then loads (or blanks) the incoming date, warning first if the
+  // outgoing entry has anything in it.
+  function handleDateChange(newDate: string) {
+    if (newDate === date) return;
+    const blank = initialState(defaults);
+    const dirty = JSON.stringify(state) !== JSON.stringify(blank);
+    if (dirty) {
+      const proceed = window.confirm(
+        `You have an entry in progress for ${date}. It's saved and won't be lost — switching dates shows that date's own entry instead. Continue?`,
+      );
+      if (!proceed) return;
+    }
+    const nextState = switchDraftDate(localStorage, date, state, newDate, blank);
+    nextId.current = maxRowId(nextState) + 1;
+    setError(null);
+    setDate(newDate);
+    setState(nextState);
+  }
 
   const derived = useMemo(() => {
     const available = parseCount(state.rooms.available);
@@ -379,6 +430,12 @@ export default function NightReportForm({
       );
       return;
     }
+    if (date !== currentDate && !state.enteredLateReason.trim()) {
+      setError(
+        `This report is for ${date}, not today — enter a short reason it's being entered late.`,
+      );
+      return;
+    }
 
     const report = {
       rooms: {
@@ -420,6 +477,7 @@ export default function NightReportForm({
       remarks: state.remarks,
       varianceReason: state.varianceReason,
       revenueGapReason: state.revenueGapReason,
+      enteredLateReason: state.enteredLateReason,
     };
 
     setPending(true);
@@ -427,7 +485,7 @@ export default function NightReportForm({
       const res = await submitNightReport({ date, report });
       if (res.ok) {
         try {
-          localStorage.removeItem(draftKey);
+          localStorage.removeItem(draftKeyFor(date));
         } catch {
           /* ignore */
         }
@@ -449,9 +507,45 @@ export default function NightReportForm({
   const gapStyle: React.CSSProperties = derived.gapReasonRequired
     ? { color: "var(--warn)", background: "var(--warn-bg)" }
     : { color: "var(--text-muted)" };
+  const isBackdated = date !== currentDate;
 
   return (
     <div className="flex flex-col gap-6 pb-40">
+      {/* Date */}
+      <section className="flex flex-col gap-3">
+        <Row label="Report date">
+          <input
+            aria-label="Report date"
+            type="date"
+            min={minDate}
+            max={maxDate}
+            value={date}
+            onChange={(e) => handleDateChange(e.target.value)}
+            className="h-11 rounded border px-3"
+            style={fieldStyle}
+          />
+        </Row>
+        {isBackdated ? (
+          <Row label="Why is this being entered late? (required)">
+            <input
+              aria-label="Reason entered late"
+              placeholder="e.g. power cut, sick shift, forgotten"
+              className="h-11 rounded border px-3"
+              style={{
+                ...fieldStyle,
+                borderColor: state.enteredLateReason.trim()
+                  ? "var(--border-strong)"
+                  : "var(--warn)",
+              }}
+              value={state.enteredLateReason}
+              onChange={(e) =>
+                set((s) => ((s.enteredLateReason = e.target.value), s))
+              }
+            />
+          </Row>
+        ) : null}
+      </section>
+
       {/* Rooms */}
       <section className="flex flex-col gap-3">
         <SectionHeading>Rooms</SectionHeading>

@@ -18,6 +18,21 @@ export const dynamic = "force-dynamic";
 
 const RECENT_APPROVED_LIMIT = 20;
 
+function Badge({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      className="ml-2 rounded px-2 py-0.5"
+      style={{
+        fontSize: "var(--text-caption)",
+        color: "var(--warn)",
+        background: "var(--warn-bg)",
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
 export default async function OwnerHome() {
   const settings = await getSettings();
   const [pending, approved] = await Promise.all([
@@ -89,7 +104,10 @@ export default async function OwnerHome() {
                       key={String(d._id)}
                       style={{ borderBottom: "1px solid var(--border)" }}
                     >
-                      <td className="p-2">{String(d.date)}</td>
+                      <td className="p-2">
+                        {String(d.date)}
+                        {d.enteredLate ? <Badge>Backdated</Badge> : null}
+                      </td>
                       <td className="p-2">{nameOf(d.submittedBy)}</td>
                       <td className="p-2 money">{formatRM(revenue)}</td>
                       <td
@@ -146,22 +164,14 @@ export default async function OwnerHome() {
                       key={String(d._id)}
                       style={{ borderBottom: "1px solid var(--border)" }}
                     >
-                      <td className="p-2">{String(d.date)}</td>
+                      <td className="p-2">
+                        {String(d.date)}
+                        {d.enteredLate ? <Badge>Backdated</Badge> : null}
+                      </td>
                       <td className="p-2">{nameOf(d.submittedBy)}</td>
                       <td className="p-2">{nameOf(d.approvedBy)}</td>
                       <td className="p-2">
-                        {self ? (
-                          <span
-                            className="rounded px-2 py-0.5"
-                            style={{
-                              fontSize: "var(--text-caption)",
-                              color: "var(--warn)",
-                              background: "var(--warn-bg)",
-                            }}
-                          >
-                            Self-approved
-                          </span>
-                        ) : null}
+                        {self ? <Badge>Self-approved</Badge> : null}
                       </td>
                     </tr>
                   );

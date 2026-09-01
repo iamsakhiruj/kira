@@ -118,6 +118,11 @@ export const NightReportInputSchema = z.object({
   remarks: z.string().max(2000).default(""),
   varianceReason: z.string().max(500).default(""),
   revenueGapReason: z.string().max(500).default(""),
+  // Required by the server (not by this schema — it doesn't know the
+  // current business date) whenever the submitted date isn't today's. One
+  // line: was it a power cut, a sick shift, someone forgetting? The
+  // enteredLate flag says it happened; this says why.
+  enteredLateReason: z.string().max(300).default(""),
 });
 
 export type NightReportInput = z.infer<typeof NightReportInputSchema>;
