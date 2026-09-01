@@ -73,7 +73,10 @@ export function validateMongoUri(uri: string): string[] {
     errors.push('An "mongodb+srv://" URI must not include a port number.');
   }
 
-  const hosts = hostSection.replace(/:\d+$/, "").split(",").filter(Boolean);
+  const hosts = hostSection
+    .split(",")
+    .map((h) => h.replace(/:\d+$/, ""))
+    .filter(Boolean);
   if (hosts.length === 0) {
     errors.push("No host found after the credentials.");
   }

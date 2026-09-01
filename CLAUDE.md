@@ -105,6 +105,8 @@ ownerTransactions  recurringObligations obligationOccurrences
 
 **Indexes to create:** `businessDays.date` (unique), `advances.employeeId`, `auditLog.createdAt`, `obligationOccurrences.dueDate`.
 
+**Local dev network blocks SRV DNS.** On this machine's network, Node's DNS resolver can't complete the `_mongodb._tcp.*` SRV lookup that `mongodb+srv://` requires (fails with `ECONNREFUSED`), even though Windows `nslookup` resolves the same SRV record fine — it's Node's resolver specifically being refused, not a real DNS/Atlas problem. `MONGODB_URI` in `.env.local` therefore uses the standard non-SRV `mongodb://` form with the three shard hosts and `replicaSet`/`ssl`/`authSource` spelled out explicitly, copied from Atlas Connect's "standard connection string" option. **Do not "simplify" this back to the short `mongodb+srv://` form without testing** — it will likely work fine on a different network, or on the deploy server (Step 9), where this resolver restriction may not apply.
+
 ---
 
 ## What good looks like here

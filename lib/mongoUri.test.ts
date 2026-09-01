@@ -16,6 +16,14 @@ describe("validateMongoUri", () => {
     expect(problems.join(" ")).not.toContain("pa@ss");
   });
 
+  it("flags a double @@ between password and host (paste/edit typo)", () => {
+    const problems = validateMongoUri(
+      "mongodb+srv://user:pass@@cluster0.ab12c.mongodb.net/db",
+    );
+    expect(problems.length).toBeGreaterThan(0);
+    expect(problems[0]).toMatch(/more than one '@'/);
+  });
+
   it("accepts a password with the @ percent-encoded as %40", () => {
     expect(
       validateMongoUri("mongodb+srv://user:pa%40ss@cluster0.ab12c.mongodb.net/db"),
@@ -29,6 +37,14 @@ describe("validateMongoUri", () => {
   it("rejects a bad scheme", () => {
     const problems = validateMongoUri("http://cluster0.ab12c.mongodb.net");
     expect(problems[0]).toMatch(/Scheme is wrong/);
+  });
+
+  it("accepts a standard (non-SRV) URI with multiple ported hosts", () => {
+    expect(
+      validateMongoUri(
+        "mongodb://user:pw@shard-00-00.ab12c.mongodb.net:27017,shard-00-01.ab12c.mongodb.net:27017,shard-00-02.ab12c.mongodb.net:27017/db?ssl=true&replicaSet=atlas-x-shard-0&authSource=admin",
+      ),
+    ).toEqual([]);
   });
 
   it("rejects a port on an srv URI", () => {
