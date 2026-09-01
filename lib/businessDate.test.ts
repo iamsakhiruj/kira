@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { businessDateFor } from "./businessDate";
+import { businessDateFor, previousBusinessDate } from "./businessDate";
 
 /**
  * KL is UTC+8 with no daylight saving. To construct an instant at a given KL
@@ -65,5 +65,24 @@ describe("businessDateFor validation", () => {
     expect(() => businessDateFor(new Date(), -1)).toThrow();
     expect(() => businessDateFor(new Date(), 24)).toThrow();
     expect(() => businessDateFor(new Date(), 6.5)).toThrow();
+  });
+});
+
+describe("previousBusinessDate", () => {
+  it("steps back one day", () => {
+    expect(previousBusinessDate("2026-09-02")).toBe("2026-09-01");
+  });
+
+  it("handles month boundaries", () => {
+    expect(previousBusinessDate("2026-10-01")).toBe("2026-09-30");
+    expect(previousBusinessDate("2026-03-01")).toBe("2026-02-28"); // not a leap year
+  });
+
+  it("handles year boundaries", () => {
+    expect(previousBusinessDate("2027-01-01")).toBe("2026-12-31");
+  });
+
+  it("rejects a malformed date", () => {
+    expect(() => previousBusinessDate("nope")).toThrow();
   });
 });

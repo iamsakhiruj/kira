@@ -66,3 +66,18 @@ export function businessDateFor(
 
   return `${year}-${pad(month)}-${pad(day)}`;
 }
+
+/**
+ * The business date one calendar day before the given one. Used to offer
+ * reception "yesterday" when a night report was missed. Handles month and
+ * year boundaries.
+ */
+export function previousBusinessDate(date: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) {
+    throw new Error("previousBusinessDate: date must be YYYY-MM-DD.");
+  }
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12));
+  d.setUTCDate(d.getUTCDate() - 1);
+  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+}

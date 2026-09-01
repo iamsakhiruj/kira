@@ -193,6 +193,20 @@ Session-based, two roles. Decisions already made — don't relitigate them witho
 
 ---
 
+## Night report (built in Step 3)
+
+The core screen (spec §4). Decisions made here:
+
+- **`reconcile()` in `lib/nightReport.ts` is the cash-drawer truth**, unit-tested. Expected = opening float + cash collected − cash expenses − **refunds paid** − banked in. Only `paidBy: "cash"` expenses reduce the drawer; card ones don't. **Cash refunds are treated as leaving the drawer** (a decided extension of spec 4.4 — revisit if refunds are handled differently in practice).
+- **Expense lines carry `paidBy: "cash" | "card"`** — added to the CLAUDE.md `businessDays` shape because the drawer math needs it.
+- **Variance** is recomputed server-side on submit (never trust the client). A reason is required when `|variance| > varianceThresholdSen` (default RM 20, from settings). Out-of-tolerance shows **amber** — never green/red (those stay reserved for money in/out).
+- **Business date is server-decided.** The client may request only the current business date or the previous one (backfilling a missed "yesterday"); the server validates it's one of those two and still missing. One report per day, enforced by the unique index on `businessDays.date`.
+- **Drafts live in the browser** (`localStorage`, keyed by date), cleared on submit. A dropped connection at 1am loses nothing. Only Submit writes to the server.
+- **`propertySettings`** holds `cutoffHour` and `varianceThresholdSen` (read via `lib/settings.ts`, defaults when absent). No settings UI yet.
+- Submit locks the day to `status: "submitted"`. Reception can't edit after; owner review/correction is Step 4.
+
+---
+
 ## Conventions
 
 - Server Components by default; Client Components only where there's interaction

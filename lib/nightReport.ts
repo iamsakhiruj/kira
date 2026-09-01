@@ -1,0 +1,189 @@
+/**
+ * The night report — one document per business day in `businessDays`.
+ *
+ * Money is integer sen everywhere (`...Sen`). Revenue, collections and
+ * receivables are kept separate (CLAUDE.md rule 3): a room sold to a monthly
+ * guest is revenue today but cash next month, a prepaid OTA booking is revenue
+ * today and no cash at the desk. The schema captures all three; it never
+ * collapses them into one figure.
+ *
+ * `reconcile()` is the cash-drawer calculation and is unit-tested — it is the
+ * number that makes the whole system worth running.
+ */
+
+import { z } from "zod";
+
+export const REVENUE_CATEGORIES = [
+  "Food & beverage",
+  "Laundry",
+  "Hall / function room",
+  "Parking",
+  "Late checkout",
+  "Extra bed",
+  "Damages recovered",
+  "Other",
+] as const;
+
+export const EXPENSE_CATEGORIES = [
+  "Guest supplies",
+  "Cleaning materials",
+  "Minor repairs",
+  "Transport",
+  "Staff meals",
+  "F&B cost of sales",
+  "Kitchen purchases",
+  "Stationery",
+  "Water / gas top-up",
+  "Miscellaneous",
+] as const;
+
+export const PAID_BY = ["cash", "card"] as const;
+
+export const BUSINESS_DAY_STATUSES = [
+  "submitted",
+  "approved",
+  "queried",
+] as const;
+
+const senInt = z.number().int("Amounts are stored as whole sen.");
+const nonNegSen = senInt.min(0, "Amount cannot be negative.");
+const count = z.number().int().min(0);
+
+export const RevenueLineSchema = z.object({
+  category: z.enum(REVENUE_CATEGORIES),
+  amountSen: nonNegSen,
+  note: z.string().max(200).default(""),
+});
+
+export const ExpenseLineSchema = z.object({
+  category: z.enum(EXPENSE_CATEGORIES),
+  amountSen: nonNegSen,
+  paidTo: z.string().max(120).default(""),
+  paidBy: z.enum(PAID_BY),
+  note: z.string().max(200).default(""),
+});
+
+export const RoomsSchema = z
+  .object({
+    available: count,
+    sold: count,
+    houseUse: count,
+    revenueSen: nonNegSen,
+  })
+  .refine((r) => r.sold + r.houseUse <= r.available, {
+    message: "Rooms sold plus house use cannot exceed rooms available.",
+    path: ["available"],
+  });
+
+export const CollectionsSchema = z.object({
+  cashSen: nonNegSen,
+  cardSen: nonNegSen,
+  transferSen: nonNegSen,
+  ewalletSen: nonNegSen,
+  otaPrepaidSen: nonNegSen,
+  chargeToAccountSen: nonNegSen,
+  depositsSen: nonNegSen,
+  refundsSen: nonNegSen,
+});
+
+export const CashSchema = z.object({
+  openingFloatSen: nonNegSen,
+  bankedInSen: nonNegSen,
+  countedSen: nonNegSen,
+});
+
+/** What the client sends on submit. The server adds date/status/actor/variance. */
+export const NightReportInputSchema = z.object({
+  rooms: RoomsSchema,
+  revenueLines: z.array(RevenueLineSchema).max(50),
+  collections: CollectionsSchema,
+  expenses: z.array(ExpenseLineSchema).max(100),
+  cash: CashSchema,
+  remarks: z.string().max(2000).default(""),
+  varianceReason: z.string().max(500).default(""),
+});
+
+export type NightReportInput = z.infer<typeof NightReportInputSchema>;
+
+// --- Cash reconciliation --------------------------------------------------
+
+export interface ReconcileInput {
+  collections: { cashSen: number; refundsSen: number };
+  expenses: { amountSen: number; paidBy: (typeof PAID_BY)[number] }[];
+  cash: { openingFloatSen: number; bankedInSen: number; countedSen: number };
+}
+
+export interface Reconciliation {
+  cashInSen: number; // physical cash received at the desk
+  cashExpensesSen: number; // petty cash paid in cash (card expenses excluded)
+  refundsSen: number; // cash refunds paid out of the drawer
+  bankedInSen: number;
+  openingFloatSen: number;
+  expectedCashSen: number;
+  countedSen: number;
+  varianceSen: number; // counted − expected; negative = short, positive = surplus
+}
+
+/**
+ * Expected cash = opening float + cash collected − cash expenses − refunds
+ * paid − cash banked in. Only cash expenses reduce the drawer; card ones do
+ * not. Refunds paid at the desk are treated as leaving the drawer (a decided
+ * assumption — see the Design/spec notes).
+ */
+export function reconcile(input: ReconcileInput): Reconciliation {
+  const openingFloatSen = input.cash.openingFloatSen;
+  const cashInSen = input.collections.cashSen;
+  const cashExpensesSen = input.expenses
+    .filter((e) => e.paidBy === "cash")
+    .reduce((sum, e) => sum + e.amountSen, 0);
+  const refundsSen = input.collections.refundsSen;
+  const bankedInSen = input.cash.bankedInSen;
+
+  const expectedCashSen =
+    openingFloatSen + cashInSen - cashExpensesSen - refundsSen - bankedInSen;
+  const countedSen = input.cash.countedSen;
+  const varianceSen = countedSen - expectedCashSen;
+
+  return {
+    cashInSen,
+    cashExpensesSen,
+    refundsSen,
+    bankedInSen,
+    openingFloatSen,
+    expectedCashSen,
+    countedSen,
+    varianceSen,
+  };
+}
+
+/** A variance beyond tolerance demands a written reason before submit. */
+export function requiresVarianceReason(
+  varianceSen: number,
+  thresholdSen: number,
+): boolean {
+  return Math.abs(varianceSen) > thresholdSen;
+}
+
+// --- Room metrics (display only; not stored) ------------------------------
+
+export function occupancyRatio(sold: number, available: number): number {
+  return available > 0 ? sold / available : 0;
+}
+
+/** Average daily rate, in sen: room revenue ÷ rooms sold. */
+export function adrSen(revenueSen: number, sold: number): number {
+  return sold > 0 ? Math.round(revenueSen / sold) : 0;
+}
+
+/** Revenue per available room, in sen: room revenue ÷ rooms available. */
+export function revparSen(revenueSen: number, available: number): number {
+  return available > 0 ? Math.round(revenueSen / available) : 0;
+}
+
+/** Total revenue = room revenue + other revenue lines. */
+export function totalRevenueSen(
+  roomRevenueSen: number,
+  revenueLines: { amountSen: number }[],
+): number {
+  return revenueLines.reduce((sum, l) => sum + l.amountSen, roomRevenueSen);
+}
