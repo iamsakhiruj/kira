@@ -9,6 +9,7 @@
 import { MongoClient } from "mongodb";
 import { resolveSrv, lookup } from "node:dns/promises";
 import { validateMongoUri } from "../lib/mongoUri";
+import { resolveMongoDns, dnsHostOf } from "../lib/mongoDns";
 
 try {
   process.loadEnvFile(".env.local");
@@ -98,6 +99,31 @@ function reportConnectionError(err: unknown): void {
   }
 }
 
+function reportDnsError(err: unknown, host: string, isSrv: boolean): void {
+  const e = err as { code?: string; message?: string };
+  const code = e?.code ?? "";
+  const notFound = /ENOTFOUND|ENODATA|NXDOMAIN|NOTFOUND/i.test(
+    `${code} ${String(e?.message ?? "")}`,
+  );
+  if (notFound) {
+    console.error(
+      `\n✗ DNS: no ${isSrv ? "SRV record" : "address"} found (${code || "not found"}). ` +
+        `The host ${host} did not resolve. Atlas hosts look like clustername.xxxxx.mongodb.net — ` +
+        "copy the string from Atlas: Connect > Drivers > Node.js.",
+    );
+  } else {
+    // ECONNREFUSED / ETIMEOUT / ESERVFAIL / EREFUSED — the resolver itself
+    // couldn't be reached. nslookup can still succeed because Node uses a
+    // different resolver (c-ares).
+    console.error(
+      `\n✗ DNS query failed (${code || "error"}). Node's resolver couldn't complete the ` +
+        `${isSrv ? "SRV" : "host"} lookup. nslookup may still work — it uses a different resolver. ` +
+        "Use the non-SRV mongodb:// string from Atlas Connect, or configure a working DNS server. " +
+        "The MongoDB driver uses this same resolver, so it will hit the same error.",
+    );
+  }
+}
+
 async function main() {
   const uri = process.env.MONGODB_URI ?? "";
 
@@ -126,19 +152,28 @@ async function main() {
     process.exit(1);
   }
 
-  // 4/5. DNS first, so a resolution failure is reported distinctly.
+  // 4/5. DNS first, so a resolution failure is reported distinctly. For
+  // mongodb+srv:// this is an SRV lookup on _mongodb._tcp.<host> (Atlas SRV
+  // hosts have no A record); for mongodb:// it's a plain host lookup.
   const isSrv = parts.scheme.includes("+srv");
-  const dnsHost = parts.host.split(",")[0].replace(/:\d+$/, "");
-  console.log(`\nResolving DNS for ${dnsHost} ...`);
+  const dnsHost = dnsHostOf(parts.host);
+  console.log(
+    `\nResolving DNS (${isSrv ? "SRV record" : "host lookup"}) for ${dnsHost} ...`,
+  );
   try {
-    if (isSrv) await resolveSrv("_mongodb._tcp." + dnsHost);
-    else await lookup(dnsHost);
-    console.log("  DNS OK.");
-  } catch {
-    console.error(
-      `\n✗ DNS failure. The host ${dnsHost} did not resolve. Atlas hosts look like ` +
-        "clustername.xxxxx.mongodb.net — copy the string from Atlas: Connect > Drivers > Node.js.",
-    );
+    const dns = await resolveMongoDns(parts.scheme, parts.host, {
+      resolveSrv: (n) => resolveSrv(n),
+      lookup: (h) => lookup(h),
+    });
+    if (dns.kind === "srv") {
+      console.log(
+        `  ✓ SRV OK — ${dns.recordCount} shard record(s) at ${dns.queryName}.`,
+      );
+    } else {
+      console.log("  ✓ DNS OK.");
+    }
+  } catch (err) {
+    reportDnsError(err, dnsHost, isSrv);
     process.exit(1);
   }
 
