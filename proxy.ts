@@ -21,10 +21,19 @@ import {
 // /settings/payment-methods and /settings/users are siblings, not a shared
 // /settings parent with sections hidden inside) — see those routes'
 // layout.tsx for why that matters. Order doesn't matter as long as that
-// holds; add new prefixes here as Phase 2 routes land.
-const ROUTE_REQUIREMENTS: { prefix: string; required: Role }[] = [
+// holds. Every prefix must also be listed in `config.matcher` below, or
+// this gate never runs on it. Omitting `required` means "any authenticated
+// role" — must match what that route's own requireUser() call does.
+const ROUTE_REQUIREMENTS: { prefix: string; required?: Role }[] = [
   { prefix: "/owner", required: "owner" },
-  { prefix: "/reception", required: "reception" },
+  { prefix: "/reception" }, // any authenticated role — see layout.tsx
+  { prefix: "/dashboard", required: "manager" },
+  { prefix: "/revenue", required: "manager" },
+  { prefix: "/expenses", required: "manager" },
+  { prefix: "/employees", required: "manager" },
+  { prefix: "/reports", required: "manager" },
+  { prefix: "/salary", required: "owner" },
+  { prefix: "/partners", required: "owner" },
   { prefix: "/settings/payment-methods", required: "manager" },
   { prefix: "/settings/users", required: "owner" },
 ];
@@ -56,5 +65,16 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/owner/:path*", "/reception/:path*", "/settings/:path*"],
+  matcher: [
+    "/owner/:path*",
+    "/reception/:path*",
+    "/dashboard/:path*",
+    "/revenue/:path*",
+    "/expenses/:path*",
+    "/employees/:path*",
+    "/reports/:path*",
+    "/salary/:path*",
+    "/partners/:path*",
+    "/settings/:path*",
+  ],
 };

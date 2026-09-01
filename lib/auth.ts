@@ -20,7 +20,7 @@ import {
 import { getUserById } from "./users";
 
 export function homeFor(role: Role): string {
-  return role === "owner" ? "/owner" : "/reception";
+  return role === "reception" ? "/reception" : "/dashboard";
 }
 
 /** The current session from the cookie, or null. Cheap — no database hit. */

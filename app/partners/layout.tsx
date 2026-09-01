@@ -2,14 +2,7 @@ import type { ReactNode } from "react";
 import { requireUser } from "@/lib/auth";
 import AppShell from "@/components/app-shell";
 
-// Owner-only — a separate gate from /settings/payment-methods (manager+),
-// not a shared /settings parent with sections hidden inside. See that
-// route's layout.tsx for why.
-export default async function UsersSettingsLayout({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export default async function PartnersLayout({ children }: { children: ReactNode }) {
   const user = await requireUser("owner");
   return (
     <AppShell role={user.role} userName={user.name}>

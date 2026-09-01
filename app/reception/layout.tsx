@@ -1,45 +1,20 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { logout } from "@/app/login/actions";
+import AppShell from "@/components/app-shell";
 
+// Any authenticated role — reception fills in the night report, manager and
+// owner also see the approval queue on this same page (see page.tsx). Which
+// content renders is decided per-role inside the page, not by this gate;
+// this just keeps unauthenticated requests out.
 export default async function ReceptionLayout({
   children,
 }: {
   children: ReactNode;
 }) {
-  const user = await requireUser("reception");
-
+  const user = await requireUser();
   return (
-    <div className="min-h-screen">
-      <header
-        className="flex items-center justify-between border-b px-4 py-3"
-        style={{ background: "var(--surface)", borderColor: "var(--border)" }}
-      >
-        <span style={{ fontWeight: 600 }}>Front desk</span>
-        <div className="flex items-center gap-3">
-          {user.role === "owner" ? (
-            <Link
-              href="/owner"
-              style={{ fontSize: "var(--text-label)", color: "var(--brand)" }}
-            >
-              Owner console
-            </Link>
-          ) : null}
-          <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>
-            {user.name}
-          </span>
-          <form action={logout}>
-            <button
-              type="submit"
-              style={{ fontSize: "var(--text-label)", color: "var(--brand)" }}
-            >
-              Sign out
-            </button>
-          </form>
-        </div>
-      </header>
-      <main className="p-4">{children}</main>
-    </div>
+    <AppShell role={user.role} userName={user.name}>
+      {children}
+    </AppShell>
   );
 }

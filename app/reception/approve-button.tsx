@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { approveNightReport } from "./actions";
+import { approveNightReport } from "./approve-actions";
 
 export default function ApproveButton({
   businessDayId,

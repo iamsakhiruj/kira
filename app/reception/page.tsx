@@ -13,6 +13,7 @@ import NightReportScreen, {
   type DaySlot,
   type DaySummary,
 } from "./night-report-screen";
+import ApprovalQueue from "./approval-queue";
 
 // The report and cash count depend on request-time data; never prerender.
 export const dynamic = "force-dynamic";
@@ -69,23 +70,26 @@ export default async function ReceptionHome() {
     });
 
   const minDate =
-    user?.role === "owner"
-      ? undefined
-      : businessDateMinusDays(current, RECEPTION_BACKFILL_DAYS - 1);
+    user?.role === "reception"
+      ? businessDateMinusDays(current, RECEPTION_BACKFILL_DAYS - 1)
+      : undefined;
 
   return (
-    <NightReportScreen
-      slots={slots}
-      currentDate={current}
-      minDate={minDate}
-      maxDate={current}
-      defaults={{
-        roomsAvailable: settings.roomsAvailable,
-        openingFloatSen: settings.openingFloatSen,
-      }}
-      varianceThresholdSen={settings.varianceThresholdSen}
-      revenueGapThresholdSen={settings.revenueGapThresholdSen}
-      expenseCeilingSen={settings.expenseCeilingSen}
-    />
+    <div className="flex flex-col gap-8">
+      <NightReportScreen
+        slots={slots}
+        currentDate={current}
+        minDate={minDate}
+        maxDate={current}
+        defaults={{
+          roomsAvailable: settings.roomsAvailable,
+          openingFloatSen: settings.openingFloatSen,
+        }}
+        varianceThresholdSen={settings.varianceThresholdSen}
+        revenueGapThresholdSen={settings.revenueGapThresholdSen}
+        expenseCeilingSen={settings.expenseCeilingSen}
+      />
+      {user && user.role !== "reception" ? <ApprovalQueue /> : null}
+    </div>
   );
 }
