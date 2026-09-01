@@ -7,6 +7,7 @@ import {
   revparSen,
   totalRevenueSen,
   revenueGap,
+  isSelfApproved,
   type ReconcileInput,
   type RevenueGapInput,
 } from "./nightReport";
@@ -131,6 +132,21 @@ describe("revenueGap", () => {
     // depositsSen isn't even a field on RevenueGapInput.collections: a day
     // that takes a large guest deposit must not move gapSen at all.
     expect(revenueGap(base()).gapSen).toBe(0);
+  });
+});
+
+describe("isSelfApproved", () => {
+  it("is true when the same user submitted and approved", () => {
+    expect(isSelfApproved("owner1", "owner1")).toBe(true);
+  });
+
+  it("is false when a different user approved", () => {
+    expect(isSelfApproved("reception1", "owner1")).toBe(false);
+  });
+
+  it("is false when not yet approved", () => {
+    expect(isSelfApproved("owner1", null)).toBe(false);
+    expect(isSelfApproved("owner1", undefined)).toBe(false);
   });
 });
 

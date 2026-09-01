@@ -66,9 +66,11 @@ Once the owner approves a business day, it cannot be edited. Corrections are new
 
 Both reduce cash on hand and must post a cash-out line to that day's night report, or the drawer will not balance. Both must be excluded from the profit calculation. See spec 5.4 and 8.2.
 
-### 7. Reception sees very little
+### 7. Reception sees very little — owner is not restricted
 
-Today and yesterday. Their own entries. No profit figures, no salary figures, no past months, no supplier balances, no drawing history. Enforce this server-side on every query — never by hiding UI elements.
+Reception: today and yesterday. Their own entries. No profit figures, no salary figures, no past months, no supplier balances, no drawing history. Enforce this server-side on every query — never by hiding UI elements.
+
+The owner has no equivalent restriction, including on reception's own screens: **in a small hotel the owner covers shifts**, so they can reach `/reception/*` and submit night reports like any reception user — `/owner/*` stays owner-only. Role hierarchy: **owner ≥ reception**. `isAuthorized()` in `lib/session.ts` implements this as a rank comparison (`RANK[role] >= RANK[required]`), checked identically by `proxy.ts` (the coarse Edge gate) and `requireUser()` (the real one) — see the Auth section below.
 
 ---
 
@@ -206,12 +208,23 @@ The core screen (spec §4). Decisions made here:
 - **Business date is server-decided.** The client may request only the current business date or the previous one (backfilling a missed "yesterday"); the server validates it's one of those two and still missing. One report per day, enforced by the unique index on `businessDays.date`.
 - **Drafts live in the browser** (`localStorage`, keyed by date), cleared on submit. A dropped connection at 1am loses nothing. Only Submit writes to the server.
 - **`propertySettings`** holds `cutoffHour`, `varianceThresholdSen`, `revenueGapThresholdSen`, and `expenseCeilingSen` (read via `lib/settings.ts`, defaults when absent). No settings UI yet.
-- Submit locks the day to `status: "submitted"`. Reception can't edit after; owner review/correction is Step 4.
+- Submit locks the day to `status: "submitted"`. Reception can't edit after; owner approves in Step 4 (below) — correction/editing an approved day is still unbuilt.
 - **`revenueGap()` in `lib/nightReport.ts` checks the spec §3 identity** (revenue = collections + receivables added − receivables settled) and is a **warning, never a block** — reception must always be able to submit, or a refusal at 1am just gets fudged until it passes. Deposits are excluded from the identity entirely (money in, not revenue — netting them in would cause false gaps on deposit-taking nights). `receivablesSettledSen` was added to `collections`: money collected today (already inside cash/card/transfer/ewallet) that pays off a receivable booked on an earlier day, e.g. a monthly guest clearing last month's `chargeToAccount` balance. Same UX pattern as the cash variance: shown above submit, reason required past `revenueGapThresholdSen` (default RM 50), `revenueGapSen`/`revenueGapReason` stored on the document for the Step 4 owner queue to surface.
 - **§4.6 kitchen purchases** uses spec's Option A: a plain expense line (category "Kitchen purchases") through petty cash, not a float with top-ups. Simplest, right for now since reception hands over the cash each morning; revisit if that assumption stops holding.
 - **Amounts are validated as non-negative on both sides.** `MoneyInput` in the form amber-highlights a negative value the same way it does an unparseable one — `toSen()` accepts a leading `-`, so this can't be caught by "does it parse."
-- **Per-item expense ceiling (spec §4.5)** is `expenseCeilingSen` in settings, default RM 300 — spec §14 open question 5 asks the owner directly what this number should be and hasn't been answered yet, so treat RM 300 as a placeholder to revisit once they do. "Needs the owner, not reception" is implemented the same warn-not-block way as variance and the revenue gap: an expense line over the ceiling requires its (now-visible) `note` field to be filled before submit, checked both client- and server-side. It doesn't block the report or route anywhere yet — there's no owner review queue to route to until Step 4 — it just ensures the note the owner will need is captured at the point reception actually remembers why.
+- **Per-item expense ceiling (spec §4.5)** is `expenseCeilingSen` in settings, default RM 300 — spec §14 open question 5 asks the owner directly what this number should be and hasn't been answered yet, so treat RM 300 as a placeholder to revisit once they do. "Needs the owner, not reception" is implemented the same warn-not-block way as variance and the revenue gap: an expense line over the ceiling requires its (now-visible) `note` field to be filled before submit, checked both client- and server-side. It doesn't block the report — it ensures the note the owner will need is captured at the point reception actually remembers why, ready for the owner review queue (below) to show.
 - **`ExpenseLineSchema` carries `receiptUrl` (optional, string)**, matching the shape above. No upload mechanism exists yet — file storage for receipt/report photos (spec §4.1, §4.5) isn't decided (no bucket, no env vars, nothing in the Stack table) — this field just keeps the schema from drifting further from the documented shape until that decision is made.
+
+---
+
+## Owner review (started in Step 4)
+
+Minimal on purpose — just enough to make self-approval visible, not the full review/correction screen spec §5 describes.
+
+- **`app/owner/page.tsx`** lists submitted days awaiting approval (revenue, variance, revenue gap — amber past the same thresholds as the reception form) and the most recent approved days. `approveNightReport()` in `app/owner/actions.ts` sets `status: "approved"`, `approvedBy`, `approvedAt`; audit-logged with the full before/after document, same as submit.
+- **`approveBusinessDay()` in `lib/businessDays.ts` guards its own filter on `status: "submitted"`** — a double-click or two owners approving at once can't approve the same day twice; the second write simply matches nothing and the action reports it was already handled.
+- **Self-approval is allowed, not blocked.** A small hotel's owner covers shifts, so `submittedBy === approvedBy` is a normal case, not an error. `isSelfApproved()` in `lib/nightReport.ts` flags it; the "Recently approved" table shows a "Self-approved" badge (amber, per the colour rule — attention, not money) when it applies.
+- **Not built yet:** editing or querying an approved day (still immutable per rule 5), the profit/monthly picture from spec §5, and anything using `receiptUrl`/`reportPhotoUrl` beyond storing the pasted link.
 
 ---
 

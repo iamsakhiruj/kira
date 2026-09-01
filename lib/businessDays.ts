@@ -5,7 +5,7 @@
  * UI problem.
  */
 
-import type { Collection, Document, InsertOneResult } from "mongodb";
+import { ObjectId, type Collection, type Document, type InsertOneResult, type WithId } from "mongodb";
 import { getDb } from "./mongodb";
 
 async function collection(): Promise<Collection<Document>> {
@@ -24,9 +24,56 @@ export async function getBusinessDay(date: string): Promise<Document | null> {
   return col.findOne({ date });
 }
 
+export async function getBusinessDayById(
+  id: string,
+): Promise<WithId<Document> | null> {
+  if (!ObjectId.isValid(id)) return null;
+  const col = await collection();
+  return col.findOne({ _id: new ObjectId(id) });
+}
+
 export async function insertBusinessDay(
   doc: Document,
 ): Promise<InsertOneResult<Document>> {
   const col = await collection();
   return col.insertOne(doc);
+}
+
+/** Submitted days awaiting the owner's review, oldest first. */
+export async function getPendingBusinessDays(): Promise<WithId<Document>[]> {
+  const col = await collection();
+  return col.find({ status: "submitted" }).sort({ date: 1 }).toArray();
+}
+
+/** Most recently approved days, newest first — for the review queue's history. */
+export async function getRecentlyApprovedBusinessDays(
+  limit: number,
+): Promise<WithId<Document>[]> {
+  const col = await collection();
+  return col
+    .find({ status: "approved" })
+    .sort({ approvedAt: -1 })
+    .limit(limit)
+    .toArray();
+}
+
+/**
+ * Approve a submitted day: sets status/approvedBy/approvedAt. Guarded by
+ * status: "submitted" in the filter so a double-click (or two owners
+ * approving at once) can't approve the same day twice — the second call
+ * simply matches nothing.
+ */
+export async function approveBusinessDay(
+  id: string,
+  approvedBy: string,
+  approvedAt: Date,
+): Promise<WithId<Document> | null> {
+  if (!ObjectId.isValid(id)) return null;
+  const col = await collection();
+  const result = await col.findOneAndUpdate(
+    { _id: new ObjectId(id), status: "submitted" },
+    { $set: { status: "approved", approvedBy, approvedAt } },
+    { returnDocument: "after" },
+  );
+  return result;
 }

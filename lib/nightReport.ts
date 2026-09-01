@@ -255,3 +255,19 @@ export function totalRevenueSen(
 ): number {
   return revenueLines.reduce((sum, l) => sum + l.amountSen, roomRevenueSen);
 }
+
+// --- Owner review (Step 4) --------------------------------------------------
+
+/**
+ * A small hotel's owner covers shifts, so submittedBy and approvedBy can
+ * legitimately be the same person. Not blocked — CLAUDE.md rule 5 (approved
+ * days are immutable) doesn't require a second person, only a record — but
+ * flagged so it's visible in the review queue, not silently indistinguishable
+ * from a normal two-person approval.
+ */
+export function isSelfApproved(
+  submittedBy: string,
+  approvedBy: string | null | undefined,
+): boolean {
+  return approvedBy != null && approvedBy === submittedBy;
+}

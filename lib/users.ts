@@ -52,6 +52,24 @@ export async function getUserById(id: string): Promise<StoredUser | null> {
   return col.findOne({ _id: new ObjectId(id) }) as Promise<StoredUser | null>;
 }
 
+/** Batch name lookup for display (e.g. a review queue listing many users' entries). */
+export async function getUserNamesByIds(
+  ids: string[],
+): Promise<Map<string, string>> {
+  const validIds = [...new Set(ids)].filter((id) => ObjectId.isValid(id));
+  if (validIds.length === 0) return new Map();
+
+  const col = await usersCollection();
+  const users = await col
+    .find(
+      { _id: { $in: validIds.map((id) => new ObjectId(id)) } },
+      { projection: { name: 1 } },
+    )
+    .toArray();
+
+  return new Map(users.map((u) => [u._id.toString(), u.name as string]));
+}
+
 export interface NewUser {
   email: string;
   name: string;

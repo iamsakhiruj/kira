@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { logout } from "@/app/login/actions";
 
@@ -17,6 +18,14 @@ export default async function ReceptionLayout({
       >
         <span style={{ fontWeight: 600 }}>Front desk</span>
         <div className="flex items-center gap-3">
+          {user.role === "owner" ? (
+            <Link
+              href="/owner"
+              style={{ fontSize: "var(--text-label)", color: "var(--brand)" }}
+            >
+              Owner console
+            </Link>
+          ) : null}
           <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>
             {user.name}
           </span>
