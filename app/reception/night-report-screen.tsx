@@ -4,6 +4,7 @@ import { useState } from "react";
 import { formatRM } from "@/lib/money";
 import { requiresVarianceReason } from "@/lib/nightReport";
 import NightReportForm from "./night-report-form";
+import CorrectionRequestForm from "./correction-request-form";
 
 export interface DaySummary {
   status: string;
@@ -15,6 +16,14 @@ export interface DaySummary {
   varianceReason: string;
   revenueGapSen: number;
   revenueGapReason: string;
+  /** MongoDB _id of the businessDays document, needed by the correction form. */
+  businessDayId: string;
+  /**
+   * Whether the current user may raise a correction request against this day.
+   * Server-computed: day is submitted/approved AND (role !== reception OR
+   * submittedBy === current user). Never derived client-side.
+   */
+  canRequestCorrection: boolean;
 }
 
 export interface DaySlot {
@@ -103,6 +112,12 @@ function SubmittedCard({
           <p style={{ color: "var(--text-faint)" }}>Reason: {s.revenueGapReason}</p>
         ) : null}
       </div>
+      {s.canRequestCorrection ? (
+        <CorrectionRequestForm
+          businessDayId={s.businessDayId}
+          date={slot.date}
+        />
+      ) : null}
     </div>
   );
 }

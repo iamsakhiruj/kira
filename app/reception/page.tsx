@@ -15,22 +15,35 @@ import {
   getActiveCategories,
 } from "@/lib/categoriesStore";
 import { totalRevenueSen } from "@/lib/nightReport";
+import {
+  getCorrectionRequestsByRequester,
+  ensureCorrectionRequestIndexes,
+} from "@/lib/correctionRequestsStore";
 import NightReportScreen, {
   type DaySlot,
   type DaySummary,
 } from "./night-report-screen";
 import ApprovalQueue from "./approval-queue";
+import MyCorrectionsSection from "./my-corrections-section";
 
 // The report and cash count depend on request-time data; never prerender.
 export const dynamic = "force-dynamic";
 
 const RECEPTION_BACKFILL_DAYS = 7;
 
-function summarize(doc: WithId<Document>): DaySummary {
+function summarize(
+  doc: WithId<Document>,
+  currentUserId: string,
+  currentUserRole: string,
+): DaySummary {
   const roomRevenueSen: number = doc.rooms?.revenueSen ?? 0;
   const revenueLines: { amountSen: number }[] = doc.revenueLines ?? [];
+  const status = String(doc.status ?? "submitted");
+  const canCorrectStatus = status === "submitted" || status === "approved";
+  const isReception = currentUserRole === "reception";
+  const isOwnReport = String(doc.submittedBy) === currentUserId;
   return {
-    status: doc.status ?? "submitted",
+    status,
     roomsSold: doc.rooms?.sold ?? 0,
     roomsAvailable: doc.rooms?.available ?? 0,
     totalRevenueSen: totalRevenueSen(roomRevenueSen, revenueLines),
@@ -39,6 +52,12 @@ function summarize(doc: WithId<Document>): DaySummary {
     varianceReason: doc.cash?.varianceReason ?? "",
     revenueGapSen: doc.revenueGapSen ?? 0,
     revenueGapReason: doc.revenueGapReason ?? "",
+    businessDayId: doc._id.toString(),
+    // Reception may only raise corrections on their own reports; manager/owner
+    // may raise against any submitted or approved report. Server-computed so
+    // the client never makes this decision.
+    canRequestCorrection:
+      canCorrectStatus && (!isReception || isOwnReport),
   };
 }
 
@@ -54,6 +73,8 @@ export default async function ReceptionHome() {
 
   await ensureCategoriesIndexes();
   await ensureCategoriesSeeded();
+  await ensureCorrectionRequestIndexes();
+
   const [docs, earliestDate, revenueCats, expenseCats] = await Promise.all([
     getBusinessDaysByDates(window7),
     getEarliestBusinessDate(),
@@ -80,6 +101,9 @@ export default async function ReceptionHome() {
   const dates = datesSinceFirstReport(window7, earliestDate, current);
   const previous = dates.at(-2) ?? current;
 
+  const userId = user?.sub ?? "";
+  const userRole = user?.role ?? "reception";
+
   const slots: DaySlot[] = dates
     .slice()
     .reverse() // newest first: tonight, yesterday, then older missing days
@@ -95,7 +119,7 @@ export default async function ReceptionHome() {
         date,
         label,
         isRecent,
-        summary: doc ? summarize(doc) : null,
+        summary: doc ? summarize(doc, userId, userRole) : null,
       };
     });
 
@@ -103,6 +127,13 @@ export default async function ReceptionHome() {
     user?.role === "reception"
       ? businessDateMinusDays(current, RECEPTION_BACKFILL_DAYS - 1)
       : undefined;
+
+  // Fetch reception's own correction requests only for reception role.
+  // Manager/owner see corrections in the approval queue instead.
+  const myCorrections =
+    user && user.role === "reception"
+      ? await getCorrectionRequestsByRequester(user.sub)
+      : [];
 
   return (
     <div className="flex flex-col gap-8">
@@ -138,6 +169,9 @@ export default async function ReceptionHome() {
         revenueCategoryNames={revenueCategoryNames}
         expenseCategoryNames={expenseCategoryNames}
       />
+      {user && user.role === "reception" && myCorrections.length > 0 ? (
+        <MyCorrectionsSection corrections={myCorrections} />
+      ) : null}
       {user && user.role !== "reception" ? <ApprovalQueue /> : null}
     </div>
   );

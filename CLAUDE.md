@@ -329,6 +329,18 @@ Owner-only (`app/profit/layout.tsx` + every action re-checks `requireUser("owner
 
 ---
 
+## Corrections (Phase 2 §2.9)
+
+Reception can't edit a submitted report; they raise a request and a manager/owner resolves it. No new nav item — §5 folds corrections into Front desk (`/reception`).
+
+- **The `correctionRequests` document *is* the adjustment.** Applying a correction sets its status to `applied` with the resolution and **never mutates the `businessDays` document** — the store (`lib/correctionRequestsStore.ts`) only ever writes `correctionRequests`. Same immutability as approved days / locked allocations (rule 5); history never moves. There is no separate adjustments collection and no recomputation of the report's frozen figures — the applied request is the durable, referenced record of what should change (this step is a documented correction trail, not a re-derivation).
+- **Fields** (`lib/correctionRequests.ts`): `businessDayId`, `businessDate` (copied for display), `requestedBy`, `requestedAt`, `whatNeedsCorrecting`, `whatItShouldBe`, `reason`, `status` (open/applied/rejected), `resolvedBy`, `resolvedAt`, `resolutionNote`.
+- **Roles, server-enforced** (§4): anyone authenticated may raise, but **reception only against a report they submitted** (`submittedBy === user.sub`, checked in `raiseCorrection`); a request can only target a `submitted` or `approved` day. **Apply/reject is `requireUser("manager")`** (reception 403); a rejection requires a note. `resolveCorrectionRequest` guards on `status: "open"` so two resolvers can't both succeed.
+- **Both raise and resolve are audit-logged**: create → `action: "create"`; apply → `"correct"`; reject → `"update"`, note carried as the audit `reason`.
+- **Surfacing:** reception raises from their own submitted card and sees a "My correction requests" list with the outcome; the approval queue shows an "Open correction requests (N)" section with apply/reject controls.
+
+---
+
 ## Conventions
 
 - Server Components by default; Client Components only where there's interaction

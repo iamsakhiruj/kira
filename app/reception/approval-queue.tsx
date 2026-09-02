@@ -15,7 +15,9 @@ import {
   requiresVarianceReason,
   isSelfApproved,
 } from "@/lib/nightReport";
+import { getOpenCorrectionRequests } from "@/lib/correctionRequestsStore";
 import ApproveButton from "./approve-button";
+import ResolveCorrectionButton from "./resolve-correction-button";
 
 const RECENT_APPROVED_LIMIT = 20;
 
@@ -95,9 +97,10 @@ function Badge({ children }: { children: React.ReactNode }) {
  */
 export default async function ApprovalQueue() {
   const settings = await getSettings();
-  const [pending, approved] = await Promise.all([
+  const [pending, approved, openCorrections] = await Promise.all([
     getPendingBusinessDays(),
     getRecentlyApprovedBusinessDays(RECENT_APPROVED_LIMIT),
+    getOpenCorrectionRequests(),
   ]);
 
   const userIds = new Set<string>();
@@ -105,6 +108,9 @@ export default async function ApprovalQueue() {
   for (const d of approved) {
     if (d.submittedBy) userIds.add(String(d.submittedBy));
     if (d.approvedBy) userIds.add(String(d.approvedBy));
+  }
+  for (const c of openCorrections) {
+    if (c.requestedBy) userIds.add(String(c.requestedBy));
   }
   const names = await getUserNamesByIds([...userIds]);
   const nameOf = (id: unknown) =>
@@ -188,6 +194,69 @@ export default async function ApprovalQueue() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>
+          Open correction requests
+          {openCorrections.length ? ` (${openCorrections.length})` : ""}
+        </h2>
+        {openCorrections.length === 0 ? (
+          <p style={{ color: "var(--text-muted)" }}>No open correction requests.</p>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {openCorrections.map((c) => (
+              <div
+                key={String(c._id)}
+                className="rounded-card border p-4 flex flex-col gap-3"
+                style={{
+                  background: "var(--surface)",
+                  borderColor: "var(--border)",
+                  fontSize: "var(--text-label)",
+                }}
+              >
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                  <div className="flex flex-col gap-1">
+                    <span style={{ fontWeight: 600 }}>{String(c.businessDate)}</span>
+                    <span style={{ color: "var(--text-muted)" }}>
+                      Requested by {nameOf(c.requestedBy)}
+                    </span>
+                  </div>
+                  <span
+                    className="rounded px-2 py-0.5"
+                    style={{
+                      fontSize: "var(--text-caption)",
+                      color: "var(--warn)",
+                      background: "var(--warn-bg)",
+                      border: "1px solid var(--warn)",
+                    }}
+                  >
+                    open
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <p>
+                    <span style={{ color: "var(--text-muted)" }}>
+                      What needs correcting:
+                    </span>{" "}
+                    {String(c.whatNeedsCorrecting)}
+                  </p>
+                  <p>
+                    <span style={{ color: "var(--text-muted)" }}>
+                      What it should be:
+                    </span>{" "}
+                    {String(c.whatItShouldBe)}
+                  </p>
+                  <p>
+                    <span style={{ color: "var(--text-muted)" }}>Reason:</span>{" "}
+                    {String(c.reason)}
+                  </p>
+                </div>
+                <ResolveCorrectionButton correctionId={String(c._id)} />
+              </div>
+            ))}
           </div>
         )}
       </section>
