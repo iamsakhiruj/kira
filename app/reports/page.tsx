@@ -16,6 +16,7 @@ import {
   cashMovement,
   collectionsByChannel,
   occupancy,
+  lateSubmissionCount,
   type NightDayDoc,
   type StandaloneEntry,
 } from "@/lib/reportSummary";
@@ -355,6 +356,23 @@ export default async function ReportsPage({
       reason: d.varianceReason ?? "",
     }));
 
+  // Late submissions — reports filed more than the configured threshold after
+  // the business day ended. Uses the raw docs (date + submittedAt), not the
+  // NightDayDoc projection, which drops submittedAt.
+  const lateCount = lateSubmissionCount(
+    allDays.map((d) => {
+      const raw = (d as Record<string, unknown>).submittedAt;
+      const submittedAt = raw ? new Date(raw as string | Date) : null;
+      return {
+        date: String(d.date),
+        submittedAt:
+          submittedAt && !Number.isNaN(submittedAt.getTime()) ? submittedAt : null,
+      };
+    }),
+    settings.cutoffHour,
+    settings.lateSubmissionThresholdHours,
+  );
+
   // Single-month detection for "Allocate this month" link (owner only)
   const exactMonth = isOwner ? isExactCalendarMonth(clampedFrom, clampedTo) : null;
 
@@ -648,6 +666,28 @@ export default async function ReportsPage({
             </table>
           </div>
         )}
+      </section>
+
+      {/* Late submissions — house rule is to file before the shift hands over */}
+      <section className="flex flex-col gap-1">
+        <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>
+          Late submissions
+        </h2>
+        <p style={{ fontSize: "var(--text-label)" }}>
+          <span
+            className="money"
+            style={{
+              fontWeight: 600,
+              color: lateCount > 0 ? "var(--warn)" : "var(--text)",
+            }}
+          >
+            {lateCount}
+          </span>{" "}
+          <span style={{ color: "var(--text-muted)" }}>
+            report{lateCount === 1 ? "" : "s"} filed more than{" "}
+            {settings.lateSubmissionThresholdHours}h after the business day ended.
+          </span>
+        </p>
       </section>
     </div>
   );

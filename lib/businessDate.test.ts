@@ -7,6 +7,9 @@ import {
   datesSinceFirstReport,
   canSubmitDate,
   formatBusinessDateLabel,
+  endOfBusinessDate,
+  submissionLatenessHours,
+  isLateSubmission,
 } from "./businessDate";
 
 /**
@@ -208,5 +211,58 @@ describe("formatBusinessDateLabel", () => {
 
   it("rejects a malformed date", () => {
     expect(() => formatBusinessDateLabel("nope")).toThrow();
+  });
+});
+
+describe("endOfBusinessDate", () => {
+  it("ends at the cutoff on the following day (KL)", () => {
+    // Business date 2026-09-02 with cutoff 06:00 ends at 2026-09-03 06:00 KL,
+    // which is 2026-09-02 22:00 UTC.
+    expect(endOfBusinessDate("2026-09-02", 6).toISOString()).toBe(
+      "2026-09-02T22:00:00.000Z",
+    );
+  });
+
+  it("respects a custom cutoff and rolls month/year boundaries", () => {
+    // 2026-09-30, cutoff 6 -> 2026-10-01 06:00 KL = 2026-09-30 22:00 UTC.
+    expect(endOfBusinessDate("2026-09-30", 6).toISOString()).toBe(
+      "2026-09-30T22:00:00.000Z",
+    );
+    // Cutoff 0 -> midnight KL the next day = 16:00 UTC same day.
+    expect(endOfBusinessDate("2026-12-31", 0).toISOString()).toBe(
+      "2026-12-31T16:00:00.000Z",
+    );
+  });
+});
+
+describe("submissionLatenessHours / isLateSubmission", () => {
+  // Same klInstant helper convention: KL wall-clock minus 8h = UTC.
+  const at = (y: number, m: number, d: number, h: number, min = 0) =>
+    new Date(Date.UTC(y, m - 1, d, h - 8, min));
+
+  it("a report filed at 03:00 the next morning is on time (negative gap)", () => {
+    // For business date 2026-09-02, 03:00 on 3 Sep is before the 06:00 cutoff.
+    const gap = submissionLatenessHours("2026-09-02", at(2026, 9, 3, 3), 6);
+    expect(gap).toBeCloseTo(-3, 5);
+    expect(isLateSubmission("2026-09-02", at(2026, 9, 3, 3), 12, 6)).toBe(false);
+  });
+
+  it("the same report filed at 14:00 the next day is 8 hours late", () => {
+    const gap = submissionLatenessHours("2026-09-02", at(2026, 9, 3, 14), 6);
+    expect(gap).toBeCloseTo(8, 5);
+  });
+
+  it("counts as late only past the threshold hours", () => {
+    // +8h is not late at the default 12h threshold...
+    expect(isLateSubmission("2026-09-02", at(2026, 9, 3, 14), 12, 6)).toBe(false);
+    // ...but a report filed at 20:00 the next day (+14h) is.
+    expect(isLateSubmission("2026-09-02", at(2026, 9, 3, 20), 12, 6)).toBe(true);
+    // Exactly at the threshold is not "more than" it.
+    expect(isLateSubmission("2026-09-02", at(2026, 9, 3, 18), 12, 6)).toBe(false);
+  });
+
+  it("uses the configured cutoff hour", () => {
+    // With cutoff 0 the business day ends at midnight; 03:00 next day is +3h.
+    expect(submissionLatenessHours("2026-09-02", at(2026, 9, 3, 3), 0)).toBeCloseTo(3, 5);
   });
 });

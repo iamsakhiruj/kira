@@ -6,6 +6,7 @@ import {
   cashMovement,
   collectionsByChannel,
   occupancy,
+  lateSubmissionCount,
   type NightDayDoc,
   type StandaloneEntry,
   type PartnerTxn,
@@ -509,5 +510,42 @@ describe("salary-as-expense classification (CLAUDE.md rule 6)", () => {
     const expSummary = expensesByCategory([], [linkedSalaryEntry], catMap);
     expect(expSummary.totalSen).toBe(0); // linked entry excluded
     expect(expSummary.categories).toHaveLength(0);
+  });
+});
+
+describe("lateSubmissionCount", () => {
+  // KL wall-clock minus 8h = UTC.
+  const at = (y: number, m: number, d: number, h: number) =>
+    new Date(Date.UTC(y, m - 1, d, h - 8));
+
+  it("counts reports filed more than the threshold hours after the day ended", () => {
+    const days = [
+      // Business date 2 Sep (cutoff 6 -> ends 3 Sep 06:00). Filed 03:00 next
+      // day = on time (~-3h).
+      { date: "2026-09-02", submittedAt: at(2026, 9, 3, 3) },
+      // Filed 14:00 next day = +8h, not late at a 12h threshold.
+      { date: "2026-09-03", submittedAt: at(2026, 9, 4, 14) },
+      // Filed 20:00 next day = +14h, late.
+      { date: "2026-09-04", submittedAt: at(2026, 9, 5, 20) },
+    ];
+    expect(lateSubmissionCount(days, 6, 12)).toBe(1);
+  });
+
+  it("respects a different threshold", () => {
+    const days = [{ date: "2026-09-02", submittedAt: at(2026, 9, 3, 14) }]; // +8h
+    expect(lateSubmissionCount(days, 6, 6)).toBe(1); // late at 6h
+    expect(lateSubmissionCount(days, 6, 12)).toBe(0); // on time at 12h
+  });
+
+  it("skips reports with no submittedAt", () => {
+    const days = [
+      { date: "2026-09-02", submittedAt: null },
+      { date: "2026-09-03", submittedAt: at(2026, 9, 4, 22) }, // +16h, late
+    ];
+    expect(lateSubmissionCount(days, 6, 12)).toBe(1);
+  });
+
+  it("is zero for an empty period", () => {
+    expect(lateSubmissionCount([], 6, 12)).toBe(0);
   });
 });

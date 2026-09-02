@@ -6,6 +6,7 @@
  */
 
 import { combinedTotalSen } from "./reporting";
+import { isLateSubmission } from "./businessDate";
 import {
   totalRevenueSen,
   occupancyRatio as calcOccupancyRatio,
@@ -245,6 +246,34 @@ export interface OccupancyResult {
   occupancyRatio: number;
   adrSen: number;
   revparSen: number;
+}
+
+// ---------------------------------------------------------------------------
+// Late submissions
+// ---------------------------------------------------------------------------
+
+export interface SubmissionTiming {
+  date: string;
+  submittedAt: Date | null;
+}
+
+/**
+ * How many reports in the period were filed more than `thresholdHours` after
+ * their business date ended (its cutoff the next morning). The house rule is
+ * to submit before the shift hands over; this counts the ones that slipped.
+ * Reports with no `submittedAt` are skipped. Never affects whether a report
+ * could be submitted — it only measures timing after the fact.
+ */
+export function lateSubmissionCount(
+  days: SubmissionTiming[],
+  cutoffHour: number,
+  thresholdHours: number,
+): number {
+  return days.filter(
+    (d) =>
+      d.submittedAt != null &&
+      isLateSubmission(d.date, d.submittedAt, thresholdHours, cutoffHour),
+  ).length;
 }
 
 export function occupancy(

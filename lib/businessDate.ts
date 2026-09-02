@@ -148,6 +148,58 @@ export function canSubmitDate(
   return date > businessDateMinusDays(current, backfillDays);
 }
 
+/**
+ * The instant a business date *ends* — the cutoff on the following calendar
+ * day, in KL time (UTC+8, no DST). Business date D runs [D cutoffHour, D+1
+ * cutoffHour), so it ends at D+1 at `cutoffHour` KL. Used to measure how late
+ * a night report was filed relative to the shift it covers.
+ */
+export function endOfBusinessDate(
+  date: string,
+  cutoffHour: number = DEFAULT_CUTOFF_HOUR,
+): Date {
+  const d = parseBusinessDate(date, "endOfBusinessDate");
+  // D+1 at cutoffHour KL. KL hour H is UTC hour H-8; Date.UTC rolls a negative
+  // hour or overflowing day into the correct instant.
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, cutoffHour - 8),
+  );
+}
+
+/**
+ * Hours between when a night report was submitted and when its business date
+ * ended (the cutoff the next morning). Negative or ~0 means it was filed
+ * during or right at the end of the shift — normal. A large positive value
+ * means it was filed well into the next day. A report for 2 Sep submitted at
+ * 03:00 on 3 Sep is ~-3h (normal); the same report at 14:00 is +8h.
+ *
+ * Fractional hours are preserved so the caller can round for display and
+ * compare precisely against a threshold.
+ */
+export function submissionLatenessHours(
+  date: string,
+  submittedAt: Date,
+  cutoffHour: number = DEFAULT_CUTOFF_HOUR,
+): number {
+  const end = endOfBusinessDate(date, cutoffHour);
+  return (submittedAt.getTime() - end.getTime()) / 3_600_000;
+}
+
+/**
+ * Whether a night report was filed more than `thresholdHours` after its
+ * business date ended. This never gates submission — reception can always
+ * submit whenever they get to it (CLAUDE.md); it only classifies the timing
+ * for the owner's monthly count.
+ */
+export function isLateSubmission(
+  date: string,
+  submittedAt: Date,
+  thresholdHours: number,
+  cutoffHour: number = DEFAULT_CUTOFF_HOUR,
+): boolean {
+  return submissionLatenessHours(date, submittedAt, cutoffHour) > thresholdHours;
+}
+
 // Fixed lookup tables rather than Intl.DateTimeFormat's locale-dependent
 // short forms — ICU gives "Sept" for en-GB/en-MY on this runtime, not "Sep",
 // which would silently drift from the exact copy this label is used for.

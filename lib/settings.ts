@@ -16,6 +16,13 @@ export interface PropertySettings {
   revenueGapThresholdSen: number;
   /** Per-item expense ceiling (spec §4.5) — above this, a note for the owner is required. */
   expenseCeilingSen: number;
+  /**
+   * Hours after a business day ends (its cutoff on the following day) beyond
+   * which a night report counts as a "late submission" for the monthly report.
+   * The house rule is to submit before the shift hands over; this is the
+   * threshold that turns a slip into a counted one. Never blocks submission.
+   */
+  lateSubmissionThresholdHours: number;
   /** Prefill for rooms available on the night report, if known. */
   roomsAvailable: number | null;
   /** Prefill for the opening cash float, in sen, if known. */
@@ -27,6 +34,7 @@ export const DEFAULT_SETTINGS: PropertySettings = {
   varianceThresholdSen: 2000, // RM 20.00
   revenueGapThresholdSen: 5000, // RM 50.00
   expenseCeilingSen: 30000, // RM 300.00
+  lateSubmissionThresholdHours: 12,
   roomsAvailable: null,
   openingFloatSen: null,
 };
@@ -54,6 +62,10 @@ export async function getSettings(): Promise<PropertySettings> {
       typeof doc.expenseCeilingSen === "number"
         ? doc.expenseCeilingSen
         : DEFAULT_SETTINGS.expenseCeilingSen,
+    lateSubmissionThresholdHours:
+      typeof doc.lateSubmissionThresholdHours === "number"
+        ? doc.lateSubmissionThresholdHours
+        : DEFAULT_SETTINGS.lateSubmissionThresholdHours,
     roomsAvailable:
       typeof doc.roomsAvailable === "number" ? doc.roomsAvailable : null,
     openingFloatSen:

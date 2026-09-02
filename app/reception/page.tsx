@@ -70,6 +70,11 @@ export default async function ReceptionHome() {
     .map((c) => c.name);
   const docByDate = new Map(docs.map((d) => [String(d.date), d]));
 
+  // House rule: submit tonight's report before the shift hands over, not the
+  // next day. If it isn't in yet, prompt prominently — a nudge, never a block
+  // (reception can always submit whenever they get to it).
+  const tonightSubmitted = docByDate.has(current);
+
   // Never prompt for a "missing" report from before the property started
   // using this system — that's not a gap, it just hadn't started yet.
   const dates = datesSinceFirstReport(window7, earliestDate, current);
@@ -101,6 +106,23 @@ export default async function ReceptionHome() {
 
   return (
     <div className="flex flex-col gap-8">
+      {!tonightSubmitted ? (
+        <div
+          className="rounded-card border p-4"
+          style={{
+            background: "var(--warn-bg)",
+            borderColor: "var(--warn)",
+            color: "var(--text)",
+          }}
+        >
+          <p style={{ fontWeight: 600, color: "var(--warn)" }}>
+            Tonight&apos;s report is not submitted yet
+          </p>
+          <p style={{ fontSize: "var(--text-label)" }}>
+            Complete it before you hand over.
+          </p>
+        </div>
+      ) : null}
       <NightReportScreen
         slots={slots}
         currentDate={current}

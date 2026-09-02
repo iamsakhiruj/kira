@@ -7,6 +7,10 @@ import { getUserNamesByIds } from "@/lib/users";
 import { getSettings } from "@/lib/settings";
 import { formatRM } from "@/lib/money";
 import {
+  submissionLatenessHours,
+  isLateSubmission,
+} from "@/lib/businessDate";
+import {
   totalRevenueSen,
   requiresVarianceReason,
   isSelfApproved,
@@ -14,6 +18,57 @@ import {
 import ApproveButton from "./approve-button";
 
 const RECENT_APPROVED_LIMIT = 20;
+
+/** A night report's submittedAt as a Date, or null if absent. */
+function submittedAtOf(doc: WithId<Document>): Date | null {
+  const v = doc.submittedAt;
+  if (!v) return null;
+  const d = v instanceof Date ? v : new Date(v as string);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** How long after the business date ended the report was filed, e.g.
+ * "on time", "8h after", "1d 4h after". */
+function formatLateness(hours: number): string {
+  if (hours <= 0.5) return "on time";
+  const h = Math.round(hours);
+  if (h < 24) return `${h}h after`;
+  const days = Math.floor(h / 24);
+  const rem = h % 24;
+  return rem ? `${days}d ${rem}h after` : `${days}d after`;
+}
+
+/**
+ * The submission-timing cell: how long after the business date ended the
+ * report was actually filed. A report for 2 Sep submitted at 03:00 on 3 Sep is
+ * "on time"; the same report at 14:00 shows the gap, amber once it's past the
+ * late-submission threshold. Purely informational — nothing here blocked it.
+ */
+function SubmittedCell({
+  date,
+  submittedAt,
+  cutoffHour,
+  thresholdHours,
+}: {
+  date: string;
+  submittedAt: Date | null;
+  cutoffHour: number;
+  thresholdHours: number;
+}) {
+  if (!submittedAt) {
+    return <td className="p-2" style={{ color: "var(--text-faint)" }}>—</td>;
+  }
+  const hours = submissionLatenessHours(date, submittedAt, cutoffHour);
+  const late = isLateSubmission(date, submittedAt, thresholdHours, cutoffHour);
+  return (
+    <td
+      className="p-2"
+      style={{ color: late ? "var(--warn)" : "var(--text-muted)" }}
+    >
+      {formatLateness(hours)}
+    </td>
+  );
+}
 
 function Badge({ children }: { children: React.ReactNode }) {
   return (
@@ -73,6 +128,7 @@ export default async function ApprovalQueue() {
                 <tr style={{ borderBottom: "1px solid var(--border-strong)" }}>
                   <th className="p-2 text-left">Date</th>
                   <th className="p-2 text-left">Submitted by</th>
+                  <th className="p-2 text-left">Submitted</th>
                   <th className="p-2 text-right">Revenue</th>
                   <th className="p-2 text-right">Variance</th>
                   <th className="p-2 text-right">Revenue gap</th>
@@ -105,6 +161,12 @@ export default async function ApprovalQueue() {
                         {d.enteredLate ? <Badge>Backdated</Badge> : null}
                       </td>
                       <td className="p-2">{nameOf(d.submittedBy)}</td>
+                      <SubmittedCell
+                        date={String(d.date)}
+                        submittedAt={submittedAtOf(d)}
+                        cutoffHour={settings.cutoffHour}
+                        thresholdHours={settings.lateSubmissionThresholdHours}
+                      />
                       <td className="p-2 money">{formatRM(revenue)}</td>
                       <td
                         className="p-2 money"
@@ -146,6 +208,7 @@ export default async function ApprovalQueue() {
                 <tr style={{ borderBottom: "1px solid var(--border-strong)" }}>
                   <th className="p-2 text-left">Date</th>
                   <th className="p-2 text-left">Submitted by</th>
+                  <th className="p-2 text-left">Submitted</th>
                   <th className="p-2 text-left">Approved by</th>
                   <th className="p-2" />
                 </tr>
@@ -165,6 +228,12 @@ export default async function ApprovalQueue() {
                         {d.enteredLate ? <Badge>Backdated</Badge> : null}
                       </td>
                       <td className="p-2">{nameOf(d.submittedBy)}</td>
+                      <SubmittedCell
+                        date={String(d.date)}
+                        submittedAt={submittedAtOf(d)}
+                        cutoffHour={settings.cutoffHour}
+                        thresholdHours={settings.lateSubmissionThresholdHours}
+                      />
                       <td className="p-2">{nameOf(d.approvedBy)}</td>
                       <td className="p-2">
                         {self ? <Badge>Self-approved</Badge> : null}
