@@ -34,6 +34,18 @@ export async function getRecentExpenses(
   return docs as StoredExpense[];
 }
 
+/** Standalone expenses in a calendar month ("YYYY-MM"). Lexicographic range
+ * on the indexed `date` string. */
+export async function getExpensesForMonth(
+  month: string,
+): Promise<StoredExpense[]> {
+  const col = await collection();
+  const docs = await col
+    .find({ date: { $gte: `${month}-01`, $lte: `${month}-31` } })
+    .toArray();
+  return docs as StoredExpense[];
+}
+
 export async function createExpense(
   input: z.infer<typeof ExpenseInputSchema>,
   actor: { id: string; role: Role },

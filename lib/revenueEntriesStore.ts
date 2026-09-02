@@ -34,6 +34,18 @@ export async function getRecentRevenueEntries(
   return docs as StoredRevenueEntry[];
 }
 
+/** Standalone revenue entries in a calendar month ("YYYY-MM"). Lexicographic
+ * range on the indexed `date` string. */
+export async function getRevenueEntriesForMonth(
+  month: string,
+): Promise<StoredRevenueEntry[]> {
+  const col = await collection();
+  const docs = await col
+    .find({ date: { $gte: `${month}-01`, $lte: `${month}-31` } })
+    .toArray();
+  return docs as StoredRevenueEntry[];
+}
+
 export async function createRevenueEntry(
   input: z.infer<typeof RevenueEntryInputSchema>,
   actor: { id: string; role: Role },

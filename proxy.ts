@@ -36,6 +36,7 @@ export const ROUTE_REQUIREMENTS: RouteRequirement[] = [
   { prefix: "/reports", required: "manager" },
   { prefix: "/salary", required: "owner" },
   { prefix: "/partners", required: "owner" },
+  { prefix: "/profit", required: "owner" },
   { prefix: "/settings/categories", required: "manager" },
   { prefix: "/settings/payment-methods", required: "manager" },
   { prefix: "/settings/users", required: "owner" },
@@ -78,6 +79,7 @@ export const config = {
     "/reports/:path*",
     "/salary/:path*",
     "/partners/:path*",
+    "/profit/:path*",
     "/settings/:path*",
   ],
 };

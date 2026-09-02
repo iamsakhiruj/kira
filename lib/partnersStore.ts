@@ -27,6 +27,7 @@ import {
   summariseTransactions,
   computePartnerBalanceSen,
 } from "./partners";
+import { sumEffectiveLockedByPartner } from "./profitAllocation";
 
 export type StoredPartner = WithId<Partner>;
 export type StoredPartnerShare = WithId<PartnerShare>;
@@ -275,13 +276,28 @@ export interface PartnerBalance {
 }
 
 /**
- * Balance per partner id: allocated + injections − drawings. Allocation is 0
- * until profit allocation exists (Step 2.7) — the slot is here so 2.7 drops
- * in. Also surfaces the director-loan total for the §2 / s.140B flag.
+ * Balance per partner id: allocated + injections − drawings. Allocated is the
+ * partner's notional profit share from LOCKED allocations (Step 2.7) — a
+ * management figure, not cash owed; an actual dividend is a separate declared
+ * event. Draft allocations don't count, and a locked adjustment supersedes the
+ * allocation it corrects (sumEffectiveLockedByPartner). Also surfaces the
+ * director-loan total for the §2 / s.140B flag.
  */
 export async function getPartnerBalances(): Promise<Map<string, PartnerBalance>> {
-  const col = await txnsCol();
-  const txns = (await col.find({}).toArray()) as StoredPartnerTransaction[];
+  const txns = (await (await txnsCol()).find({}).toArray()) as StoredPartnerTransaction[];
+  const allocations = await (await getDb())
+    .collection("profitAllocations")
+    .find({})
+    .toArray();
+
+  const allocatedByPartner = sumEffectiveLockedByPartner(
+    allocations.map((a) => ({
+      id: a._id.toString(),
+      status: a.status,
+      adjustmentOf: (a.adjustmentOf as string | null) ?? null,
+      lines: (a.lines as { partnerId: string; amountSen: number }[]) ?? [],
+    })),
+  );
 
   const byPartner = new Map<string, StoredPartnerTransaction[]>();
   for (const t of txns) {
@@ -290,10 +306,16 @@ export async function getPartnerBalances(): Promise<Map<string, PartnerBalance>>
     byPartner.set(t.partnerId, list);
   }
 
+  const partnerIds = new Set<string>([
+    ...byPartner.keys(),
+    ...allocatedByPartner.keys(),
+  ]);
+
   const balances = new Map<string, PartnerBalance>();
-  for (const [partnerId, list] of byPartner) {
+  for (const partnerId of partnerIds) {
+    const list = byPartner.get(partnerId) ?? [];
     const { injectionsSen, drawingsSen } = summariseTransactions(list);
-    const allocatedSen = 0; // Step 2.7
+    const allocatedSen = allocatedByPartner.get(partnerId) ?? 0;
     const directorLoanSen = list
       .filter((t) => t.direction === "drawing" && t.purpose === "director_loan")
       .reduce((s, t) => s + t.amountSen, 0);

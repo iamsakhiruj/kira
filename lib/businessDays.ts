@@ -60,6 +60,19 @@ export async function getEarliestBusinessDate(): Promise<string | null> {
   return doc ? String(doc.date) : null;
 }
 
+/** All business days in a calendar month ("YYYY-MM"), oldest first. Uses a
+ * lexicographic range on the indexed `date` string — "2026-09-31" doesn't
+ * exist but bounds the last real September day and excludes October. */
+export async function getBusinessDaysForMonth(
+  month: string,
+): Promise<WithId<Document>[]> {
+  const col = await collection();
+  return col
+    .find({ date: { $gte: `${month}-01`, $lte: `${month}-31` } })
+    .sort({ date: 1 })
+    .toArray();
+}
+
 /** Submitted days awaiting the owner's review, oldest first. */
 export async function getPendingBusinessDays(): Promise<WithId<Document>[]> {
   const col = await collection();

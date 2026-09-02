@@ -313,6 +313,21 @@ Owner-only (`app/partners/layout.tsx` + every action re-checks `requireUser("own
 
 ---
 
+## Profit allocation (Phase 2 §2.7)
+
+Owner-only (`app/profit/layout.tsx` + every action re-checks `requireUser("owner")`; manager and reception → 403 at `proxy.ts`, which gates `/profit`). One `profitAllocations` document per month, plus adjustment documents.
+
+- **The frozen-percentage rule (§1) is enforced structurally, not by convention.** When a month is allocated, each partner's percentage is **copied onto the allocation line** (`percentageBasisPoints`) by `buildLines()` in `lib/profitAllocationStore.ts`. Live `partnerShares` are read in exactly two places — `generateOrRefreshDraft` and `createAdjustment`, both *write* paths building a **draft**. Every *read* path (`getAllocationsForMonth`, `getAllocationById`, `getAllAllocations`, and the page) returns the stored `lines` only and never touches `partnerShares`. So changing a share in June cannot rewrite March: a locked month is read solely from its own snapshot. Each line shows its frozen % next to the amount on-screen, so an old month visibly states the split it used.
+- **Draft vs locked.** A draft re-pulls shares and net profit on refresh (it isn't frozen yet); **locking** (`lockAllocation`, guarded on `status:"draft"` so a double-click can't lock twice) makes the copied lines permanent. A locked base allocation can't be refreshed or edited — corrections are a **new adjustment allocation** (`createAdjustment`, `adjustmentOf` → original), a fresh draft referencing the original, which is never mutated. Same immutability model as approved days / paid salary. Partial-unique index on `{month}` where `adjustmentOf: null`.
+- **Which shares freeze for a month: the set active as of month-end** (`monthEndDate()` → `sharesActiveOn`), per decision — the "as of close" snapshot. Only matters when a share change lands mid-month.
+- **Net profit** = revenue − expenses for the month, via the tested `combinedTotalSen` (§2.3): night-report lines (revenue = `rooms.revenueSen` + revenue lines; expense = expense lines) **plus** standalone `revenueEntries`/`expenses` where `linkedBusinessDayId === null` (the double-counting rule). Month-range queries added to `businessDays`/`revenueEntriesStore`/`expensesStore` (lexicographic `date` range on the indexed field). `revenueSen`/`expenseSen` are snapshotted onto the allocation. A page warning flags unapproved days, since the figure can still move until every day is approved.
+- **Rounding: largest-remainder (Hamilton), pure integer, in `allocateProfit()` (`lib/profitAllocation.ts`, unit-tested).** `floor(netProfit × bp / 10000)` per partner (floors toward −∞, so a **loss month** works), then `+1` sen to the partners with the largest remainders until the leftover is gone, ties broken by `partnerId`. Allocated amounts **sum exactly to net profit** — no sen created or lost, each partner within a sen of their exact share. No floats.
+- **Sdn Bhd labelling (§2): a monthly close is a management figure and a *notional* share, NOT a declared dividend and NOT money owed.** A dividend is a separate act — declared from post-tax profit, with company-secretary paperwork — recorded as a `partnerTransactions` dividend when it happens. The screen says this prominently and never implies money is due on close.
+- **Partner balance** now includes allocated profit from **locked** allocations (`sumEffectiveLockedByPartner`, pure/tested): drafts don't count, and a locked adjustment supersedes the allocation it references (counts the adjustment, not both). Balance = locked-allocated + injections − drawings; the "allocated" line is labelled notional, not cash owed.
+- **Not built:** the actual dividend declaration/payment (that's an existing `partnerTransactions` dividend entry from 2.6). This step only produces the notional allocation. Every action audit-logged.
+
+---
+
 ## Conventions
 
 - Server Components by default; Client Components only where there's interaction

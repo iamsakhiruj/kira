@@ -45,6 +45,7 @@ const NAV: NavItem[] = [
   { label: "Employees", href: "/employees", minRole: "manager" },
   { label: "Salary", href: "/salary", minRole: "owner" },
   { label: "Partners", href: "/partners", minRole: "owner" },
+  { label: "Profit", href: "/profit", minRole: "owner" },
   { label: "Reports", href: "/reports", minRole: "manager" },
   {
     label: "Settings",
