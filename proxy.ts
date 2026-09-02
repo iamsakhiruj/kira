@@ -24,7 +24,9 @@ import {
 // holds. Every prefix must also be listed in `config.matcher` below, or
 // this gate never runs on it. Omitting `required` means "any authenticated
 // role" — must match what that route's own requireUser() call does.
-const ROUTE_REQUIREMENTS: { prefix: string; required?: Role }[] = [
+export type RouteRequirement = { prefix: string; required?: Role };
+
+export const ROUTE_REQUIREMENTS: RouteRequirement[] = [
   { prefix: "/owner", required: "owner" },
   { prefix: "/reception" }, // any authenticated role — see layout.tsx
   { prefix: "/dashboard", required: "manager" },
