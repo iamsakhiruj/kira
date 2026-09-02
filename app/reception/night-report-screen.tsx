@@ -133,6 +133,7 @@ export default function NightReportScreen({
   expenseCeilingSen,
   revenueCategoryNames,
   expenseCategoryNames,
+  existingDates,
 }: {
   slots: DaySlot[];
   currentDate: string;
@@ -144,12 +145,20 @@ export default function NightReportScreen({
   expenseCeilingSen: number;
   revenueCategoryNames: string[];
   expenseCategoryNames: string[];
+  /** Business dates that already have a report — the in-form date picker uses
+   * these to warn instead of offering a blank form that would fail the unique
+   * index on submit. */
+  existingDates: string[];
 }) {
   const firstMissing = slots.find((s) => s.summary === null)?.date ?? null;
   const [active, setActive] = useState<string | null>(firstMissing);
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-4">
+    // Left-aligned (not mx-auto centred): max-w-2xl keeps a readable, phone-
+    // first column, but it lines up with the left edge of the rest of the page
+    // (banner, approval queue, toggle) instead of floating centre-right with a
+    // large empty gap beside the sidebar.
+    <div className="flex max-w-2xl flex-col gap-4">
       {slots.map((slot) => {
         if (slot.summary) {
           return (
@@ -178,6 +187,7 @@ export default function NightReportScreen({
                 expenseCeilingSen={expenseCeilingSen}
                 revenueCategoryNames={revenueCategoryNames}
                 expenseCategoryNames={expenseCategoryNames}
+                existingDates={existingDates}
               />
             </div>
           );

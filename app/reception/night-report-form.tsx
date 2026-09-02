@@ -226,6 +226,7 @@ export default function NightReportForm({
   expenseCeilingSen,
   revenueCategoryNames,
   expenseCategoryNames,
+  existingDates,
 }: {
   date: string;
   currentDate: string;
@@ -237,6 +238,9 @@ export default function NightReportForm({
   expenseCeilingSen: number;
   revenueCategoryNames: string[];
   expenseCategoryNames: string[];
+  /** Dates that already have a report — picking one shows a notice instead of
+   * a blank form that would fail the unique index on submit. */
+  existingDates: string[];
 }) {
   const router = useRouter();
   const [date, setDate] = useState(initialDate);
@@ -503,6 +507,39 @@ export default function NightReportForm({
     } finally {
       setPending(false);
     }
+  }
+
+  // A report already exists for this date — don't offer a blank form that would
+  // only fail the unique index on submit. Keep the date picker so they can move
+  // to a date that needs one. (All hooks above have already run, so this early
+  // return is safe.)
+  if (existingDates.includes(date)) {
+    return (
+      <div className="flex flex-col gap-4">
+        <section className="flex flex-col gap-3">
+          <Row label="Report date">
+            <input
+              aria-label="Report date"
+              type="date"
+              min={minDate}
+              max={maxDate}
+              value={date}
+              onChange={(e) => handleDateChange(e.target.value)}
+              className="h-11 rounded border px-3"
+              style={fieldStyle}
+            />
+          </Row>
+        </section>
+        <p
+          className="rounded-card border p-4"
+          style={{ background: "var(--warn-bg)", borderColor: "var(--warn)", color: "var(--text)" }}
+        >
+          A report for <strong>{date}</strong> already exists. Pick a different date to
+          add a missing report — an existing one is edited from the approval queue
+          (owner/manager) or corrected by request.
+        </p>
+      </div>
+    );
   }
 
   const v = derived.recon.varianceSen;
@@ -862,12 +899,18 @@ export default function NightReportForm({
         />
       </section>
 
-      {/* Sticky summary + submit */}
+      {/* Sticky summary + submit. Full width on mobile (sidebar collapsed);
+          starts at the sidebar's right edge on desktop (md:left-56 matches the
+          sidebar's md:w-56 = 14rem) so it never slides under it. z-30 keeps it
+          above the form but below the sidebar (z-40). */}
       <div
-        className="fixed inset-x-0 bottom-0 border-t p-4"
+        className="fixed bottom-0 left-0 right-0 z-30 border-t p-4 md:left-56"
         style={{ background: "var(--surface)", borderColor: "var(--border)" }}
       >
-        <div className="mx-auto flex max-w-2xl flex-col gap-2">
+        {/* Left-aligned to line up with the form body above (which is
+            left-aligned, not centred) — the summary/Submit sit directly under
+            the form, not floating in the middle of the bar. */}
+        <div className="flex max-w-2xl flex-col gap-2">
           <div className="flex items-center justify-between">
             <span style={{ color: "var(--text-muted)" }}>Expected</span>
             <span className="money">{formatRM(derived.recon.expectedCashSen)}</span>

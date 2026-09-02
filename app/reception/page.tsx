@@ -25,6 +25,7 @@ import NightReportScreen, {
 } from "./night-report-screen";
 import ApprovalQueue from "./approval-queue";
 import MyCorrectionsSection from "./my-corrections-section";
+import SubmitSection from "./submit-section";
 
 // The report and cash count depend on request-time data; never prerender.
 export const dynamic = "force-dynamic";
@@ -90,6 +91,9 @@ export default async function ReceptionHome() {
     .filter((c) => !c.standaloneOnly)
     .map((c) => c.name);
   const docByDate = new Map(docs.map((d) => [String(d.date), d]));
+  // Dates that already have a report — the form uses this to warn instead of
+  // offering a blank form that would fail the unique index on submit.
+  const existingDates = [...docByDate.keys()];
 
   // House rule: submit tonight's report before the shift hands over, not the
   // next day. If it isn't in yet, prompt prominently — a nudge, never a block
@@ -128,51 +132,66 @@ export default async function ReceptionHome() {
       ? businessDateMinusDays(current, RECEPTION_BACKFILL_DAYS - 1)
       : undefined;
 
+  const isReception = userRole === "reception";
+
   // Fetch reception's own correction requests only for reception role.
   // Manager/owner see corrections in the approval queue instead.
-  const myCorrections =
-    user && user.role === "reception"
-      ? await getCorrectionRequestsByRequester(user.sub)
-      : [];
+  const myCorrections = isReception
+    ? await getCorrectionRequestsByRequester(userId)
+    : [];
 
+  const screen = (
+    <NightReportScreen
+      slots={slots}
+      currentDate={current}
+      minDate={minDate}
+      maxDate={current}
+      defaults={{
+        roomsAvailable: settings.roomsAvailable,
+        openingFloatSen: settings.openingFloatSen,
+      }}
+      varianceThresholdSen={settings.varianceThresholdSen}
+      revenueGapThresholdSen={settings.revenueGapThresholdSen}
+      expenseCeilingSen={settings.expenseCeilingSen}
+      revenueCategoryNames={revenueCategoryNames}
+      expenseCategoryNames={expenseCategoryNames}
+      existingDates={existingDates}
+    />
+  );
+
+  // Reception: the night report form is the job — form first. The
+  // "tonight not submitted" nudge is theirs (they submit before handover).
+  if (isReception) {
+    return (
+      <div className="flex flex-col gap-8">
+        {!tonightSubmitted ? (
+          <div
+            className="rounded-card border p-4"
+            style={{ background: "var(--warn-bg)", borderColor: "var(--warn)", color: "var(--text)" }}
+          >
+            <p style={{ fontWeight: 600, color: "var(--warn)" }}>
+              Tonight&apos;s report is not submitted yet
+            </p>
+            <p style={{ fontSize: "var(--text-label)" }}>
+              Complete it before you hand over.
+            </p>
+          </div>
+        ) : null}
+        {screen}
+        {myCorrections.length > 0 ? (
+          <MyCorrectionsSection corrections={myCorrections} />
+        ) : null}
+      </div>
+    );
+  }
+
+  // Owner/manager come here to approve — queue and correction requests first,
+  // the submit form collapsed below and out of the way. No "tonight not
+  // submitted" nudge: the nightly submit isn't their job.
   return (
     <div className="flex flex-col gap-8">
-      {!tonightSubmitted ? (
-        <div
-          className="rounded-card border p-4"
-          style={{
-            background: "var(--warn-bg)",
-            borderColor: "var(--warn)",
-            color: "var(--text)",
-          }}
-        >
-          <p style={{ fontWeight: 600, color: "var(--warn)" }}>
-            Tonight&apos;s report is not submitted yet
-          </p>
-          <p style={{ fontSize: "var(--text-label)" }}>
-            Complete it before you hand over.
-          </p>
-        </div>
-      ) : null}
-      <NightReportScreen
-        slots={slots}
-        currentDate={current}
-        minDate={minDate}
-        maxDate={current}
-        defaults={{
-          roomsAvailable: settings.roomsAvailable,
-          openingFloatSen: settings.openingFloatSen,
-        }}
-        varianceThresholdSen={settings.varianceThresholdSen}
-        revenueGapThresholdSen={settings.revenueGapThresholdSen}
-        expenseCeilingSen={settings.expenseCeilingSen}
-        revenueCategoryNames={revenueCategoryNames}
-        expenseCategoryNames={expenseCategoryNames}
-      />
-      {user && user.role === "reception" && myCorrections.length > 0 ? (
-        <MyCorrectionsSection corrections={myCorrections} />
-      ) : null}
-      {user && user.role !== "reception" ? <ApprovalQueue /> : null}
+      <ApprovalQueue />
+      <SubmitSection>{screen}</SubmitSection>
     </div>
   );
 }
