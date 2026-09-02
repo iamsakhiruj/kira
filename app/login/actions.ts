@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { getUserByEmail } from "@/lib/users";
+import { getUserByEmail, recordSignIn } from "@/lib/users";
 import { verifyPassword } from "@/lib/password";
 import { DbUnavailableError } from "@/lib/mongodb";
 import { maskConnectionString } from "@/lib/mongoUri";
@@ -70,6 +70,14 @@ export async function login(
   }
 
   if (!user) return fail;
+
+  // Stamp the sign-in (and audit it). A failure here must not block a valid
+  // login — the user is authenticated regardless of whether we recorded it.
+  try {
+    await recordSignIn(user._id.toString(), user.role);
+  } catch (err) {
+    console.error("[login] recordSignIn: " + maskConnectionString(describeError(err)));
+  }
 
   const token = await createSessionToken({
     sub: user._id.toString(),
