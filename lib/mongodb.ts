@@ -98,3 +98,13 @@ export async function getDb(name?: string): Promise<Db> {
   const client = await getClientPromise();
   return client.db(name ?? process.env.MONGODB_DB);
 }
+
+/**
+ * The connected client, for callers that need a session (multi-document
+ * transactions). The deployment is a three-node Atlas replica set, so
+ * transactions are available. Use for atomic multi-write operations like
+ * setShares(); ordinary single-document writes just use getDb().
+ */
+export async function getMongoClient(): Promise<MongoClient> {
+  return getClientPromise();
+}

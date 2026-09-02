@@ -242,6 +242,19 @@ export async function getSalaryPayment(
   return col.findOne({ _id: new ObjectId(id) }) as Promise<StoredSalaryPayment | null>;
 }
 
+/** All salary payments for one employee, newest month first — used by the
+ * partner view to show a linked director's remuneration. */
+export async function getSalaryPaymentsForEmployee(
+  employeeId: string,
+): Promise<StoredSalaryPayment[]> {
+  const col = await collection();
+  const docs = await col
+    .find({ employeeId })
+    .sort({ month: -1, createdAt: -1 })
+    .toArray();
+  return docs as StoredSalaryPayment[];
+}
+
 /** Edit a draft line's deductions and payment method. Rejected on a paid line
  * — the net is recomputed from the frozen gross/unpaid snapshot, never
  * hand-typed. */

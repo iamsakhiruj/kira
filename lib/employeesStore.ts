@@ -160,3 +160,13 @@ export async function getEmployeeNamesForAttendance(): Promise<
     .toArray();
   return docs as { _id: unknown; name: string; status: Employee["status"] }[];
 }
+
+/** Employees linked to a partner record (the director-salary link, §3). Owner
+ * context only — the partner module is owner-gated. */
+export async function getEmployeesByPartnerId(
+  partnerId: string,
+): Promise<StoredEmployee[]> {
+  const col = await collection();
+  const docs = await col.find({ partnerId }).sort({ name: 1 }).toArray();
+  return docs as StoredEmployee[];
+}
