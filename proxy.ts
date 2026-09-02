@@ -33,7 +33,7 @@ export const ROUTE_REQUIREMENTS: RouteRequirement[] = [
   { prefix: "/revenue", required: "manager" },
   { prefix: "/expenses", required: "manager" },
   { prefix: "/employees", required: "manager" },
-  { prefix: "/reports", required: "manager" },
+  { prefix: "/reports" },
   { prefix: "/salary", required: "owner" },
   { prefix: "/partners", required: "owner" },
   { prefix: "/profit", required: "owner" },

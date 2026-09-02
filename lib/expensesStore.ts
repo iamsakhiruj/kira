@@ -46,6 +46,18 @@ export async function getExpensesForMonth(
   return docs as StoredExpense[];
 }
 
+/** Standalone expenses between two dates (inclusive). */
+export async function getExpensesBetween(
+  fromDate: string,
+  toDate: string,
+): Promise<StoredExpense[]> {
+  const col = await collection();
+  const docs = await col
+    .find({ date: { $gte: fromDate, $lte: toDate } })
+    .toArray();
+  return docs as StoredExpense[];
+}
+
 export async function createExpense(
   input: z.infer<typeof ExpenseInputSchema>,
   actor: { id: string; role: Role },

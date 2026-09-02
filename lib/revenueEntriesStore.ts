@@ -46,6 +46,18 @@ export async function getRevenueEntriesForMonth(
   return docs as StoredRevenueEntry[];
 }
 
+/** Standalone revenue entries between two dates (inclusive). */
+export async function getRevenueEntriesBetween(
+  fromDate: string,
+  toDate: string,
+): Promise<StoredRevenueEntry[]> {
+  const col = await collection();
+  const docs = await col
+    .find({ date: { $gte: fromDate, $lte: toDate } })
+    .toArray();
+  return docs as StoredRevenueEntry[];
+}
+
 export async function createRevenueEntry(
   input: z.infer<typeof RevenueEntryInputSchema>,
   actor: { id: string; role: Role },

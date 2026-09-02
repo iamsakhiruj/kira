@@ -73,6 +73,18 @@ export async function getBusinessDaysForMonth(
     .toArray();
 }
 
+/** Business days between two dates (inclusive), oldest first. */
+export async function getBusinessDaysBetween(
+  fromDate: string,
+  toDate: string,
+): Promise<WithId<Document>[]> {
+  const col = await collection();
+  return col
+    .find({ date: { $gte: fromDate, $lte: toDate } })
+    .sort({ date: 1 })
+    .toArray();
+}
+
 /** Submitted days awaiting the owner's review, oldest first. */
 export async function getPendingBusinessDays(): Promise<WithId<Document>[]> {
   const col = await collection();

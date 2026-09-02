@@ -241,6 +241,27 @@ export async function getRecentTransactions(
     .toArray()) as StoredPartnerTransaction[];
 }
 
+/** Partner transactions in a calendar month ("YYYY-MM"). */
+export async function getPartnerTransactionsForMonth(
+  month: string,
+): Promise<StoredPartnerTransaction[]> {
+  const col = await txnsCol();
+  return (await col
+    .find({ date: { $gte: `${month}-01`, $lte: `${month}-31` } })
+    .toArray()) as StoredPartnerTransaction[];
+}
+
+/** Partner transactions between two dates (inclusive, "YYYY-MM-DD"). */
+export async function getPartnerTransactionsBetween(
+  fromDate: string,
+  toDate: string,
+): Promise<StoredPartnerTransaction[]> {
+  const col = await txnsCol();
+  return (await col
+    .find({ date: { $gte: fromDate, $lte: toDate } })
+    .toArray()) as StoredPartnerTransaction[];
+}
+
 export async function recordTransaction(
   input: z.infer<typeof PartnerTransactionInputSchema>,
   actor: { id: string; role: Role },
