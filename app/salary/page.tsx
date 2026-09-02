@@ -1,4 +1,5 @@
 import { requireUser } from "@/lib/auth";
+import PageHeader from "@/components/ui/page-header";
 import { ensureSalaryIndexes, getRun } from "@/lib/salaryStore";
 import { ensureEmployeesIndexes, getEmployeesFull } from "@/lib/employeesStore";
 import {
@@ -87,16 +88,11 @@ export default async function SalaryPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 style={{ fontSize: "var(--text-page-title)", fontWeight: 600 }}>
-          Salary
-        </h1>
-        <p style={{ color: "var(--text-muted)" }}>
-          Monthly payroll. This system records what was paid — it does not
-          calculate PCB, EPF, SOCSO or EIS. Enter the statutory total from your
-          accountant. A paid run is locked; correct it with an adjustment.
-        </p>
-      </div>
+      <PageHeader
+        title="Salary"
+        description="Monthly payroll. This system records what was paid — it does not calculate PCB, EPF, SOCSO or EIS. Enter the statutory total from your accountant. A paid run is locked; correct it with an adjustment."
+        animate
+      />
       <SalaryRunManager
         month={month}
         activeEmployeeCount={activeCount}

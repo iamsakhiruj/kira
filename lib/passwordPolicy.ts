@@ -3,17 +3,23 @@
  * screen). Pure and deterministic so it can be unit-tested without a database
  * — the policy is logic worth pinning down, not CRUD.
  *
- * Minimum length is 12 (a real floor, not the 8-char backstop in
- * lib/password.ts, which stays only to catch a bug that bypasses this). We
- * also reject the obvious weak ones: a short denylist, all-same-character,
- * trivial sequences, and anything that just echoes the account's own email —
- * because "P@ssw0rd" passing a length check is exactly how a five-user hotel
+ * Minimum length is 8. It used to be 12, doing double duty as the defense
+ * against both offline attacks (a stolen hash, cracked at leisure) and
+ * online ones (an attacker submitting real login attempts). Argon2id
+ * already handles the offline case; the login rate limiting in
+ * lib/loginRateLimit.ts / lib/loginRateLimitStore.ts (5 failed attempts
+ * per email or per IP triggers an escalating lockout) now handles the
+ * online case, so length alone doesn't have to carry both anymore — 8 is
+ * a real floor again, not a compromise. We also reject the obvious weak
+ * ones: a short denylist, all-same-character, trivial sequences, and
+ * anything that just echoes the account's own email — because
+ * "P@ssw0rd" passing a length check is exactly how a five-user hotel
  * ends up with a guessable owner account.
  *
  * Messages say what to do (CLAUDE.md error rule), never "invalid".
  */
 
-export const MIN_PASSWORD_LENGTH = 12;
+export const MIN_PASSWORD_LENGTH = 8;
 
 // Substrings that, if present, make a password trivially guessable regardless
 // of the rest. Matched case-insensitively.

@@ -7,6 +7,7 @@ import {
   revparSen,
   totalRevenueSen,
   revenueGap,
+  otaReceivableSen,
   isSelfApproved,
   type ReconcileInput,
   type RevenueGapInput,
@@ -83,12 +84,12 @@ describe("revenueGap", () => {
   function base(): RevenueGapInput {
     return {
       totalRevenueSen: 185000,
+      otaReceivableSen: 0,
       collections: {
         cashSen: 62000,
         cardSen: 60000,
         transferSen: 43000,
         ewalletSen: 20000,
-        otaPrepaidSen: 0,
         chargeToAccountSen: 0,
         refundsSen: 0,
         receivablesSettledSen: 0,
@@ -101,10 +102,10 @@ describe("revenueGap", () => {
     expect(revenueGap(base()).gapSen).toBe(0);
   });
 
-  it("treats OTA prepaid and charge-to-account as receivables added, closing the gap", () => {
+  it("treats an OTA receivable and charge-to-account as receivables added, closing the gap", () => {
     const input = base();
     input.collections.cardSen = 60000 - 15000; // RM150 less arrived at the desk...
-    input.collections.otaPrepaidSen = 15000; // ...because it's an OTA receivable instead
+    input.otaReceivableSen = 15000; // ...because it's an OTA receivable instead
     expect(revenueGap(input).gapSen).toBe(0);
   });
 
@@ -132,6 +133,81 @@ describe("revenueGap", () => {
     // depositsSen isn't even a field on RevenueGapInput.collections: a day
     // that takes a large guest deposit must not move gapSen at all.
     expect(revenueGap(base()).gapSen).toBe(0);
+  });
+});
+
+describe("otaReceivableSen", () => {
+  it("counts only guest-paid-platform lines", () => {
+    const lines = [
+      { roomRevenueSen: 15000, guestPaidPlatform: true },
+      { roomRevenueSen: 22000, guestPaidPlatform: false },
+    ];
+    expect(otaReceivableSen(lines)).toBe(15000);
+  });
+
+  it("is zero with no lines, or when every line is guest-paid-us", () => {
+    expect(otaReceivableSen([])).toBe(0);
+    expect(
+      otaReceivableSen([{ roomRevenueSen: 9000, guestPaidPlatform: false }]),
+    ).toBe(0);
+  });
+});
+
+describe("revenueGap with OTA bookings (a full night)", () => {
+  // The scenario from the OTA-platform-tracking spec: one Agoda booking
+  // where the guest paid the platform (a receivable, no cash at the desk)
+  // and one Booking.com booking where the guest paid us in cash. Nothing
+  // else that night. This must produce a zero gap.
+  it("produces a zero gap for one platform-paid booking plus one cash booking", () => {
+    const agodaRevenueSen = 18000; // RM180, guest paid Agoda
+    const bookingComRevenueSen = 22000; // RM220, guest paid us, in cash
+
+    const otaBookings = [
+      { roomRevenueSen: agodaRevenueSen, guestPaidPlatform: true },
+      { roomRevenueSen: bookingComRevenueSen, guestPaidPlatform: false },
+    ];
+
+    const gap = revenueGap({
+      // rooms.revenueSen covers both bookings — the OTA section is
+      // attribution/receivable bookkeeping, not additive to total revenue.
+      totalRevenueSen: agodaRevenueSen + bookingComRevenueSen,
+      otaReceivableSen: otaReceivableSen(otaBookings),
+      collections: {
+        cashSen: bookingComRevenueSen, // reception enters the cash actually collected
+        cardSen: 0,
+        transferSen: 0,
+        ewalletSen: 0,
+        chargeToAccountSen: 0,
+        refundsSen: 0,
+        receivablesSettledSen: 0,
+      },
+    });
+
+    expect(gap.receivablesAddedSen).toBe(agodaRevenueSen);
+    expect(gap.actualCollectionsSen).toBe(bookingComRevenueSen);
+    expect(gap.gapSen).toBe(0);
+  });
+
+  it("guest-paid-us lines are never double counted", () => {
+    const revenueSen = 30000;
+    const otaBookings = [{ roomRevenueSen: revenueSen, guestPaidPlatform: false }];
+
+    const gap = revenueGap({
+      totalRevenueSen: revenueSen,
+      otaReceivableSen: otaReceivableSen(otaBookings),
+      collections: {
+        cashSen: revenueSen,
+        cardSen: 0,
+        transferSen: 0,
+        ewalletSen: 0,
+        chargeToAccountSen: 0,
+        refundsSen: 0,
+        receivablesSettledSen: 0,
+      },
+    });
+
+    expect(gap.receivablesAddedSen).toBe(0);
+    expect(gap.gapSen).toBe(0);
   });
 });
 

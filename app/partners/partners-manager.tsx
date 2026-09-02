@@ -5,6 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toSen, formatRM } from "@/lib/money";
 import { formatBp } from "@/lib/partners";
+import Badge from "@/components/ui/badge";
+import Card from "@/components/ui/card";
+import FormPanel from "@/components/ui/form-panel";
+import DataTable from "@/components/ui/data-table";
 import { addPartner, editPartner, saveShares, addTransaction } from "./actions";
 
 interface Balance {
@@ -141,7 +145,7 @@ function PartnerForm({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-card border p-4" style={fieldStyle}>
+    <FormPanel error={error} animate={!partnerId}>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="flex flex-col gap-1">
           <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Name</span>
@@ -182,9 +186,8 @@ function PartnerForm({
           <input className="h-11 rounded border px-3" style={fieldStyle} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
       </div>
-      {error ? <p style={{ fontSize: "var(--text-label)", color: "var(--warn)" }}>{error}</p> : null}
       <div className="flex gap-2">
-        <button type="button" disabled={pending} onClick={submit} className="h-11 rounded-card px-4 font-medium" style={{ background: "var(--brand)", color: "var(--on-brand)", opacity: pending ? 0.7 : 1 }}>
+        <button type="button" disabled={pending} onClick={submit} className="btn-primary h-11 rounded-card px-4 font-medium" style={{ opacity: pending ? 0.7 : 1 }}>
           {pending ? "Saving…" : partnerId ? "Save changes" : "Add partner"}
         </button>
         {onDone ? (
@@ -193,7 +196,7 @@ function PartnerForm({
           </button>
         ) : null}
       </div>
-    </div>
+    </FormPanel>
   );
 }
 
@@ -204,7 +207,7 @@ function PartnerCard({ partner }: { partner: Partner }) {
   if (editing) return <PartnerForm initial={partner} partnerId={partner.id} onDone={() => setEditing(false)} />;
 
   return (
-    <div className="flex flex-col gap-3 rounded-card border p-4" style={{ borderColor: "var(--border)", background: "var(--surface)", opacity: partner.active ? 1 : 0.7 }}>
+    <Card tone="neutral" className="flex flex-col gap-3 p-4" style={{ opacity: partner.active ? 1 : 0.7 }}>
       <div className="flex items-start justify-between">
         <div>
           <h3 className="flex items-center gap-2" style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>
@@ -228,7 +231,9 @@ function PartnerCard({ partner }: { partner: Partner }) {
         <div>
           <div style={{ color: "var(--text-muted)" }}>Allocated</div>
           <div className="money">{formatRM(b.allocatedSen)}</div>
-          <div style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}>from 2.7</div>
+          <div style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}>
+            from locked profit allocations
+          </div>
         </div>
         <div>
           <div style={{ color: "var(--text-muted)" }}>Injections</div>
@@ -275,7 +280,7 @@ function PartnerCard({ partner }: { partner: Partner }) {
           ))}
         </div>
       ) : null}
-    </div>
+    </Card>
   );
 }
 
@@ -328,8 +333,7 @@ function SharesEditor({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-card border p-4" style={fieldStyle}>
-      <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>Shares</h2>
+    <FormPanel title="Shares" error={error}>
       <p style={{ fontSize: "var(--text-caption)", color: "var(--text-muted)" }}>
         Setting a new set closes the current one and opens a new effective-dated set — history is never overwritten.
         Active shares must total exactly 100%.
@@ -373,41 +377,35 @@ function SharesEditor({
               type="button"
               disabled={pending || !balanced}
               onClick={save}
-              className="h-11 rounded-card px-4 font-medium"
-              style={{ background: "var(--brand)", color: "var(--on-brand)", opacity: pending || !balanced ? 0.5 : 1 }}
+              className="btn-primary h-11 rounded-card px-4 font-medium"
+              style={{ opacity: pending || !balanced ? 0.5 : 1 }}
             >
               {pending ? "Saving…" : "Save share set"}
             </button>
           </div>
-          {error ? <p style={{ fontSize: "var(--text-label)", color: "var(--warn)" }}>{error}</p> : null}
         </>
       )}
 
-      {history.length ? (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse" style={{ fontSize: "var(--text-caption)" }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid var(--border-strong)", color: "var(--text-muted)" }}>
-                <th className="p-2 text-left">Partner</th>
-                <th className="p-2 text-right">Share</th>
-                <th className="p-2 text-left">From</th>
-                <th className="p-2 text-left">To</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((h) => (
-                <tr key={h.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                  <td className="p-2">{h.partnerName}</td>
-                  <td className="p-2 money">{formatBp(h.percentageBp)}%</td>
-                  <td className="p-2">{h.effectiveFrom}</td>
-                  <td className="p-2">{h.effectiveTo ?? "current"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : null}
-    </div>
+      <DataTable
+        columns={[
+          { key: "partner", header: "Partner" },
+          { key: "share", header: "Share", align: "right" },
+          { key: "from", header: "From" },
+          { key: "to", header: "To" },
+        ]}
+        isEmpty={history.length === 0}
+        emptyMessage="No share history yet."
+      >
+        {history.map((h) => (
+          <tr key={h.id} className="table-row-hover" style={{ borderBottom: "1px solid var(--border)" }}>
+            <td className="px-4 py-3">{h.partnerName}</td>
+            <td className="px-4 py-3 money">{formatBp(h.percentageBp)}%</td>
+            <td className="px-4 py-3">{h.effectiveFrom}</td>
+            <td className="px-4 py-3">{h.effectiveTo ?? "current"}</td>
+          </tr>
+        ))}
+      </DataTable>
+    </FormPanel>
   );
 }
 
@@ -464,8 +462,7 @@ function TransactionForm({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-card border p-4" style={fieldStyle}>
-      <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>Record money in / out</h2>
+    <FormPanel title="Record money in / out" error={error}>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="flex flex-col gap-1">
           <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Partner</span>
@@ -529,63 +526,55 @@ function TransactionForm({
         </p>
       ) : null}
 
-      {error ? <p style={{ fontSize: "var(--text-label)", color: "var(--warn)" }}>{error}</p> : null}
-      <button type="button" disabled={pending} onClick={submit} className="h-11 self-start rounded-card px-4 font-medium" style={{ background: "var(--brand)", color: "var(--on-brand)", opacity: pending ? 0.7 : 1 }}>
+      <button type="button" disabled={pending} onClick={submit} className="btn-primary h-11 self-start rounded-card px-4 font-medium" style={{ opacity: pending ? 0.7 : 1 }}>
         {pending ? "Recording…" : "Record"}
       </button>
-    </div>
+    </FormPanel>
   );
 }
 
 function TransactionsTable({ transactions }: { transactions: Txn[] }) {
-  if (!transactions.length) {
-    return <p style={{ color: "var(--text-muted)" }}>No partner transactions yet.</p>;
-  }
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse" style={{ fontSize: "var(--text-label)" }}>
-        <thead>
-          <tr style={{ borderBottom: "1px solid var(--border-strong)" }}>
-            <th className="p-2 text-left">Date</th>
-            <th className="p-2 text-left">Partner</th>
-            <th className="p-2 text-left">Direction</th>
-            <th className="p-2 text-left">Purpose</th>
-            <th className="p-2 text-right">Amount</th>
-            <th className="p-2 text-left">Method</th>
-            <th className="p-2 text-left">Reference</th>
-          </tr>
-        </thead>
-        <tbody>
-          {transactions.map((t) => (
-            <tr key={t.id} style={{ borderBottom: "1px solid var(--border)" }}>
-              <td className="p-2">{t.date}</td>
-              <td className="p-2">{t.partnerName}</td>
-              <td className="p-2">
-                <span className={t.direction === "injection" ? "money-in" : "money-out"}>
-                  {t.direction === "injection" ? "In" : "Out"}
-                </span>
-              </td>
-              <td className="p-2">
-                {PURPOSE_LABELS[t.purpose] ?? t.purpose}
-                {t.purpose === "director_loan" ? (
-                  <span className="ml-1 rounded px-1" style={{ fontSize: "var(--text-caption)", color: "var(--warn)", border: "1px solid var(--warn)" }}>
-                    s.140B
-                  </span>
-                ) : null}
-              </td>
-              <td className="p-2 money">
-                <span className={t.direction === "injection" ? "money-in" : "money-out"}>
-                  {t.direction === "injection" ? "" : "−"}
-                  {formatRM(t.amountSen)}
-                </span>
-              </td>
-              <td className="p-2">{t.paymentMethodName}</td>
-              <td className="p-2">{t.reference || "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      delayMs={40}
+      columns={[
+        { key: "date", header: "Date" },
+        { key: "partner", header: "Partner" },
+        { key: "direction", header: "Direction" },
+        { key: "purpose", header: "Purpose" },
+        { key: "amount", header: "Amount", align: "right" },
+        { key: "method", header: "Method" },
+        { key: "reference", header: "Reference" },
+      ]}
+      isEmpty={transactions.length === 0}
+      emptyMessage="No partner transactions yet."
+    >
+      {transactions.map((t) => (
+        <tr key={t.id} className="table-row-hover" style={{ borderBottom: "1px solid var(--border)" }}>
+          <td className="px-4 py-3">{t.date}</td>
+          <td className="px-4 py-3">{t.partnerName}</td>
+          <td className="px-4 py-3">
+            <span className={t.direction === "injection" ? "money-in" : "money-out"}>
+              {t.direction === "injection" ? "In" : "Out"}
+            </span>
+          </td>
+          <td className="px-4 py-3">
+            {PURPOSE_LABELS[t.purpose] ?? t.purpose}
+            {t.purpose === "director_loan" ? (
+              <Badge tone="warn" className="ml-1">s.140B</Badge>
+            ) : null}
+          </td>
+          <td className="px-4 py-3 money">
+            <span className={t.direction === "injection" ? "money-in" : "money-out"}>
+              {t.direction === "injection" ? "" : "−"}
+              {formatRM(t.amountSen)}
+            </span>
+          </td>
+          <td className="px-4 py-3">{t.paymentMethodName}</td>
+          <td className="px-4 py-3">{t.reference || "—"}</td>
+        </tr>
+      ))}
+    </DataTable>
   );
 }
 

@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { ensureUserIndexes, listUsers } from "@/lib/users";
+import PageHeader from "@/components/ui/page-header";
 import UsersManager from "./users-manager";
 
 // Read the current list on every request; cheap, and avoids a stale list after
@@ -35,16 +36,11 @@ export default async function UsersSettingsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 style={{ fontSize: "var(--text-page-title)", fontWeight: 600 }}>
-          Users
-        </h1>
-        <p style={{ color: "var(--text-muted)" }}>
-          Login accounts for staff. Deactivate an account instead of deleting it —
-          a deleted user would orphan every night report and audit entry that
-          references them.
-        </p>
-      </div>
+      <PageHeader
+        title="Users"
+        description="Login accounts for staff. Deactivate an account instead of deleting it — a deleted user would orphan every night report and audit entry that references them."
+        animate
+      />
       <UsersManager
         currentUserId={actor.sub}
         users={users.map((u) => ({

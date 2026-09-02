@@ -14,6 +14,11 @@ import {
   ensureCategoriesSeeded,
   getActiveCategories,
 } from "@/lib/categoriesStore";
+import {
+  ensureOtaPlatformsIndexes,
+  ensureOtaPlatformsSeeded,
+  getActiveOtaPlatforms,
+} from "@/lib/otaPlatformsStore";
 import { totalRevenueSen } from "@/lib/nightReport";
 import {
   getCorrectionRequestsByRequester,
@@ -75,13 +80,21 @@ export default async function ReceptionHome() {
   await ensureCategoriesIndexes();
   await ensureCategoriesSeeded();
   await ensureCorrectionRequestIndexes();
+  await ensureOtaPlatformsIndexes();
+  await ensureOtaPlatformsSeeded();
 
-  const [docs, earliestDate, revenueCats, expenseCats] = await Promise.all([
+  const [docs, earliestDate, revenueCats, expenseCats, otaPlatformDocs] = await Promise.all([
     getBusinessDaysByDates(window7),
     getEarliestBusinessDate(),
     getActiveCategories("revenue"),
     getActiveCategories("expense"),
+    getActiveOtaPlatforms(),
   ]);
+  const otaPlatforms = otaPlatformDocs.map((p) => ({
+    id: p._id.toString(),
+    name: p.name,
+    guestPaysPlatform: p.guestPaysPlatform,
+  }));
   // The night report's own pickers never show standalone-only categories
   // (e.g. "Rent") — those belong on the 2.3 expenses/revenue screens only.
   const revenueCategoryNames = revenueCats
@@ -155,6 +168,7 @@ export default async function ReceptionHome() {
       expenseCeilingSen={settings.expenseCeilingSen}
       revenueCategoryNames={revenueCategoryNames}
       expenseCategoryNames={expenseCategoryNames}
+      otaPlatforms={otaPlatforms}
       existingDates={existingDates}
     />
   );

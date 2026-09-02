@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { DAY_STATUSES } from "@/lib/attendance";
+import Card from "@/components/ui/card";
 import { saveEmployeeAttendance } from "../actions";
 
 type Status = (typeof DAY_STATUSES)[number];
@@ -161,28 +162,30 @@ export default function AttendanceGrid({
       {employees.length === 0 ? (
         <p style={{ color: "var(--text-muted)" }}>No active employees yet.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="border-collapse" style={{ fontSize: "var(--text-label)" }}>
-            <thead>
-              <tr style={{ borderBottom: "1px solid var(--border-strong)" }}>
-                <th className="sticky left-0 p-2 text-left" style={{ background: "var(--page)" }}>
-                  Employee
-                </th>
-                {Array.from({ length: daysInMonth }, (_, i) => (
-                  <th key={i + 1} className="p-1 text-center" style={{ minWidth: 56 }}>
-                    {i + 1}
+        <Card tone="neutral" animate className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="border-collapse" style={{ fontSize: "var(--text-label)" }}>
+              <thead>
+                <tr style={{ borderBottom: "1px solid var(--border-strong)" }}>
+                  <th className="sticky left-0 px-4 py-3 text-left" style={{ background: "var(--page)" }}>
+                    Employee
                   </th>
+                  {Array.from({ length: daysInMonth }, (_, i) => (
+                    <th key={i + 1} className="p-1 text-center" style={{ minWidth: 56 }}>
+                      {i + 1}
+                    </th>
+                  ))}
+                  <th className="p-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {employees.map((e) => (
+                  <EmployeeRow key={e.id} employee={e} daysInMonth={daysInMonth} month={month} />
                 ))}
-                <th className="p-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {employees.map((e) => (
-                <EmployeeRow key={e.id} employee={e} daysInMonth={daysInMonth} month={month} />
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
     </div>
   );

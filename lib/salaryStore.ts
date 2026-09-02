@@ -42,6 +42,9 @@ export async function ensureSalaryIndexes(): Promise<void> {
     { employeeId: 1, month: 1 },
     { unique: true, partialFilterExpression: { adjustmentOf: null } },
   );
+  // For the accounts feature's date-range aggregation, which cares about
+  // when a line was actually paid, not which month's run it belongs to.
+  await col.createIndex({ status: 1, paidDate: 1 });
 }
 
 interface ManualInputs {
@@ -222,6 +225,21 @@ export async function generateOrRefreshDraftRun(
   }
 
   return summary;
+}
+
+/** Paid lines whose paidDate falls in [fromDate, toDate] (inclusive) — a
+ * "draft" line hasn't disbursed anything, so it's excluded. Used by the
+ * accounts feature's balance calculation, which cares about when money
+ * actually left, not which month's run a line belongs to. */
+export async function getSalaryPaymentsPaidBetween(
+  fromDate: string,
+  toDate: string,
+): Promise<StoredSalaryPayment[]> {
+  const col = await collection();
+  const docs = await col
+    .find({ status: "paid", paidDate: { $gte: fromDate, $lte: toDate } })
+    .toArray();
+  return docs as StoredSalaryPayment[];
 }
 
 /** Every line for a month — base runs and any adjustments — for the run table. */

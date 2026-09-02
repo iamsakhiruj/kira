@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { formatRM } from "@/lib/money";
 import { requiresVarianceReason } from "@/lib/nightReport";
+import Card from "@/components/ui/card";
+import Badge from "@/components/ui/badge";
 import NightReportForm from "./night-report-form";
 import CorrectionRequestForm from "./correction-request-form";
 
@@ -49,22 +51,12 @@ function SubmittedCard({
   const out = requiresVarianceReason(s.varianceSen, thresholdSen);
   const gapOut = requiresVarianceReason(s.revenueGapSen, gapThresholdSen);
   return (
-    <div
-      className="rounded-card border p-4"
-      style={{ background: "var(--surface)", borderColor: "var(--border)" }}
-    >
+    <Card flat className="p-4">
       <div className="mb-2 flex items-center justify-between">
         <span style={{ fontWeight: 600 }}>{slot.label}</span>
-        <span
-          className="rounded px-2 py-0.5"
-          style={{
-            fontSize: "var(--text-caption)",
-            color: "var(--text-muted)",
-            border: "1px solid var(--border-strong)",
-          }}
-        >
+        <Badge tone={s.status === "approved" ? "neutral" : "warn"}>
           {s.status}
-        </span>
+        </Badge>
       </div>
       <div className="flex flex-col gap-1" style={{ fontSize: "var(--text-label)" }}>
         <div className="flex justify-between">
@@ -118,7 +110,7 @@ function SubmittedCard({
           date={slot.date}
         />
       ) : null}
-    </div>
+    </Card>
   );
 }
 
@@ -133,6 +125,7 @@ export default function NightReportScreen({
   expenseCeilingSen,
   revenueCategoryNames,
   expenseCategoryNames,
+  otaPlatforms,
   existingDates,
 }: {
   slots: DaySlot[];
@@ -145,6 +138,7 @@ export default function NightReportScreen({
   expenseCeilingSen: number;
   revenueCategoryNames: string[];
   expenseCategoryNames: string[];
+  otaPlatforms: { id: string; name: string; guestPaysPlatform: boolean }[];
   /** Business dates that already have a report — the in-form date picker uses
    * these to warn instead of offering a blank form that would fail the unique
    * index on submit. */
@@ -154,25 +148,30 @@ export default function NightReportScreen({
   const [active, setActive] = useState<string | null>(firstMissing);
 
   return (
-    // Left-aligned (not mx-auto centred): max-w-2xl keeps a readable, phone-
-    // first column, but it lines up with the left edge of the rest of the page
-    // (banner, approval queue, toggle) instead of floating centre-right with a
-    // large empty gap beside the sidebar.
-    <div className="flex max-w-2xl flex-col gap-4">
+    // No max-width here (unlike before) — each branch below sets its own,
+    // since the active-form branch now needs to be wider than the rest of
+    // the list for its two-column step+rail layout, while everything else
+    // (submitted cards, "tap to fill in" buttons) stays the original
+    // readable, phone-first max-w-2xl, left-aligned with the rest of the
+    // page (banner, approval queue, toggle) rather than floating centred.
+    <div className="flex flex-col gap-4">
       {slots.map((slot) => {
         if (slot.summary) {
           return (
-            <SubmittedCard
-              key={slot.date}
-              slot={slot}
-              thresholdSen={varianceThresholdSen}
-              gapThresholdSen={revenueGapThresholdSen}
-            />
+            <div key={slot.date} className="max-w-2xl">
+              <SubmittedCard
+                slot={slot}
+                thresholdSen={varianceThresholdSen}
+                gapThresholdSen={revenueGapThresholdSen}
+              />
+            </div>
           );
         }
         if (active === slot.date) {
           return (
-            <div key={slot.date} className="flex flex-col gap-3">
+            // Wider than the max-w-2xl slots around it — the form's own
+            // two-column layout (step content + summary rail) needs the room.
+            <div key={slot.date} className="flex w-full max-w-4xl flex-col gap-3">
               <h1 style={{ fontSize: "var(--text-page-title)", fontWeight: 600 }}>
                 {slot.label}
               </h1>
@@ -187,6 +186,7 @@ export default function NightReportScreen({
                 expenseCeilingSen={expenseCeilingSen}
                 revenueCategoryNames={revenueCategoryNames}
                 expenseCategoryNames={expenseCategoryNames}
+                otaPlatforms={otaPlatforms}
                 existingDates={existingDates}
               />
             </div>
@@ -197,7 +197,7 @@ export default function NightReportScreen({
             key={slot.date}
             type="button"
             onClick={() => setActive(slot.date)}
-            className="rounded-card border p-4 text-left"
+            className="max-w-2xl rounded-card border p-4 text-left"
             style={{ background: "var(--surface)", borderColor: "var(--border-strong)" }}
           >
             {slot.isRecent ? (

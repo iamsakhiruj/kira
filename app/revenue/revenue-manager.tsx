@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toSen, formatRM } from "@/lib/money";
+import FormPanel from "@/components/ui/form-panel";
+import DataTable from "@/components/ui/data-table";
 import { addRevenueEntry } from "./actions";
 
 interface Option {
@@ -88,8 +90,7 @@ function AddForm({ categories, paymentMethods, currentDate }: {
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-card border p-4" style={fieldStyle}>
-      <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>Add revenue entry</h2>
+    <FormPanel title="Add revenue entry" error={error} animate delayMs={40}>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="flex flex-col gap-1">
           <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Date</span>
@@ -180,19 +181,16 @@ function AddForm({ categories, paymentMethods, currentDate }: {
           />
         </label>
       </div>
-      {error ? (
-        <p style={{ fontSize: "var(--text-label)", color: "var(--warn)" }}>{error}</p>
-      ) : null}
       <button
         type="button"
         disabled={pending}
         onClick={submit}
-        className="h-11 self-start rounded-card px-4 font-medium"
-        style={{ background: "var(--brand)", color: "var(--on-brand)", opacity: pending ? 0.7 : 1 }}
+        className="btn-primary h-11 self-start rounded-card px-4 font-medium"
+        style={{ opacity: pending ? 0.7 : 1 }}
       >
         {pending ? "Adding…" : "Add revenue entry"}
       </button>
-    </div>
+    </FormPanel>
   );
 }
 
@@ -210,38 +208,28 @@ export default function RevenueManager({
   return (
     <div className="flex flex-col gap-4">
       <AddForm categories={categories} paymentMethods={paymentMethods} currentDate={currentDate} />
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse" style={{ fontSize: "var(--text-label)" }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid var(--border-strong)" }}>
-              <th className="p-2 text-left">Date</th>
-              <th className="p-2 text-left">Category</th>
-              <th className="p-2 text-right">Amount</th>
-              <th className="p-2 text-left">Payment method</th>
-              <th className="p-2 text-left">Received from</th>
-            </tr>
-          </thead>
-          <tbody>
-            {entries.length === 0 ? (
-              <tr>
-                <td className="p-2" colSpan={5} style={{ color: "var(--text-muted)" }}>
-                  No revenue entries recorded yet.
-                </td>
-              </tr>
-            ) : (
-              entries.map((e) => (
-                <tr key={e.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                  <td className="p-2">{e.date}</td>
-                  <td className="p-2">{e.categoryName}</td>
-                  <td className="p-2 money">{formatRM(e.amountSen)}</td>
-                  <td className="p-2">{e.paymentMethodName}</td>
-                  <td className="p-2">{e.receivedFrom || "—"}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        delayMs={80}
+        columns={[
+          { key: "date", header: "Date" },
+          { key: "category", header: "Category" },
+          { key: "amount", header: "Amount", align: "right" },
+          { key: "method", header: "Payment method" },
+          { key: "from", header: "Received from" },
+        ]}
+        isEmpty={entries.length === 0}
+        emptyMessage="No revenue entries recorded yet."
+      >
+        {entries.map((e) => (
+          <tr key={e.id} className="table-row-hover" style={{ borderBottom: "1px solid var(--border)" }}>
+            <td className="px-4 py-3">{e.date}</td>
+            <td className="px-4 py-3">{e.categoryName}</td>
+            <td className="px-4 py-3 money">{formatRM(e.amountSen)}</td>
+            <td className="px-4 py-3">{e.paymentMethodName}</td>
+            <td className="px-4 py-3">{e.receivedFrom || "—"}</td>
+          </tr>
+        ))}
+      </DataTable>
     </div>
   );
 }

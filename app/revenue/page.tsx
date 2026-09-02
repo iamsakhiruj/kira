@@ -11,6 +11,7 @@ import {
   getPaymentMethods,
 } from "@/lib/paymentMethodsStore";
 import { ensureRevenueEntriesIndexes, getRecentRevenueEntries } from "@/lib/revenueEntriesStore";
+import PageHeader from "@/components/ui/page-header";
 import RevenueManager from "./revenue-manager";
 
 // Depends on request-time data; never prerender.
@@ -40,15 +41,11 @@ export default async function RevenuePage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 style={{ fontSize: "var(--text-page-title)", fontWeight: 600 }}>
-          Revenue
-        </h1>
-        <p style={{ color: "var(--text-muted)" }}>
-          Money that arrives outside the front desk — an OTA payout, a
-          corporate payment landing directly in the account.
-        </p>
-      </div>
+      <PageHeader
+        title="Revenue"
+        description="Money that arrives outside the front desk — an OTA payout, a corporate payment landing directly in the account."
+        animate
+      />
       <RevenueManager
         currentDate={currentDate}
         categories={categories.map((c) => ({ id: c._id.toString(), name: c.name }))}

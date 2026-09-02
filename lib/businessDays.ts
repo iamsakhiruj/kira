@@ -85,6 +85,25 @@ export async function getBusinessDaysBetween(
     .toArray();
 }
 
+/**
+ * Every business day that has at least one OTA booking line, across all
+ * history — projected to just the field that's needed. Used only for the
+ * all-time OTA outstanding-balance computation (lib/otaSummary.ts), which
+ * is a running balance independent of any report's date-range filter, same
+ * precedent as getPartnerBalances() in lib/partnersStore.ts.
+ */
+export async function getAllBusinessDaysWithOtaBookings(): Promise<
+  WithId<Document>[]
+> {
+  const col = await collection();
+  return col
+    .find(
+      { otaBookings: { $exists: true, $ne: [] } },
+      { projection: { otaBookings: 1 } },
+    )
+    .toArray();
+}
+
 /** Submitted days awaiting the owner's review, oldest first. */
 export async function getPendingBusinessDays(): Promise<WithId<Document>[]> {
   const col = await collection();

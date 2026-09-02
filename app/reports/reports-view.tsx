@@ -15,10 +15,14 @@ export default function ReportsPicker({
   initialFrom,
   initialTo,
   initialPreset,
+  basePath = "/reports",
 }: {
   initialFrom: string;
   initialTo: string;
   initialPreset: Preset;
+  /** Which page's URL to push the range onto — /reports by default, /ota
+   * reuses this same date-math logic rather than duplicating it. */
+  basePath?: string;
 }) {
   const router = useRouter();
   const [from, setFrom] = useState(initialFrom);
@@ -29,7 +33,7 @@ export default function ReportsPicker({
     setPreset(p);
     setFrom(newFrom);
     setTo(newTo);
-    router.push(`/reports?from=${newFrom}&to=${newTo}`);
+    router.push(`${basePath}?from=${newFrom}&to=${newTo}`);
   }
 
   function handleFromChange(value: string) {
@@ -37,7 +41,7 @@ export default function ReportsPicker({
     setPreset("custom");
     setFrom(value);
     if (to >= value) {
-      router.push(`/reports?from=${value}&to=${to}`);
+      router.push(`${basePath}?from=${value}&to=${to}`);
     }
   }
 
@@ -46,7 +50,7 @@ export default function ReportsPicker({
     setPreset("custom");
     setTo(value);
     if (value >= from) {
-      router.push(`/reports?from=${from}&to=${value}`);
+      router.push(`${basePath}?from=${from}&to=${value}`);
     }
   }
 

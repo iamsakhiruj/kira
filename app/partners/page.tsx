@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import {
   ensurePartnerIndexes,
@@ -17,6 +18,7 @@ import {
   getEmployeesByPartnerId,
 } from "@/lib/employeesStore";
 import { getSalaryPaymentsForEmployee } from "@/lib/salaryStore";
+import PageHeader from "@/components/ui/page-header";
 import PartnersManager from "./partners-manager";
 
 export const dynamic = "force-dynamic";
@@ -140,16 +142,21 @@ export default async function PartnersPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 style={{ fontSize: "var(--text-page-title)", fontWeight: 600 }}>
-          Partners
-        </h1>
-        <p style={{ color: "var(--text-muted)" }}>
-          Owners, their effective-dated shares, and money in and out. Balance is
-          allocated profit + injections − drawings — profit allocation arrives in
-          a later step, so allocated shows as zero for now.
-        </p>
-      </div>
+      <PageHeader
+        title="Partners"
+        description={
+          <>
+            Owners, their effective-dated shares, and money in and out.
+            Balance is allocated profit + injections − drawings — allocated
+            profit comes from{" "}
+            <Link href="/profit" style={{ color: "var(--brand)" }}>
+              locked profit allocations
+            </Link>
+            .
+          </>
+        }
+        animate
+      />
       <PartnersManager
         partners={partnerData}
         shareHistory={shareHistory}

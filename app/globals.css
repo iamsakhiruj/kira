@@ -88,6 +88,17 @@
 
   /* --- Interaction ------------------------------------------------------ */
   --touch-target: 44px; /* minimum tap height on any reception screen */
+
+  /* --- Depth — layered shadows for the manager/owner surfaces -----------
+     Reception stays flatter (see .card-flat) — speed over polish at 1am. */
+  --shadow-card:
+    0 1px 2px rgba(23, 36, 44, 0.04),
+    0 8px 20px -6px rgba(23, 36, 44, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --shadow-card-hover:
+    0 2px 4px rgba(23, 36, 44, 0.06),
+    0 16px 32px -8px rgba(23, 36, 44, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 /* Expose tokens to Tailwind v4 so utilities map to the same variables.
@@ -136,7 +147,8 @@ body {
 }
 
 body {
-  background: var(--page);
+  background: linear-gradient(160deg, #fbfaf8, #f4f2ee);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font-sans);
   font-size: var(--text-body);
@@ -177,6 +189,200 @@ body {
 
 .money-out {
   color: var(--money-out);
+}
+
+/* --- Cards — layered depth (owner/manager surfaces) ----------------------
+   Light surfaces, not dark glass: depth comes from a stacked shadow and an
+   inset highlight, not transparency (which washes out on a light ground).
+   `.card` is generic; a tint variant sets --card-tint/--card-border so the
+   meaning (revenue/expense/primary figure) reads as a faint wash behind the
+   number, never as the number's own colour. */
+.card {
+  position: relative;
+  background: linear-gradient(145deg, #ffffff 0%, var(--card-tint, #fbfaf8) 100%);
+  border: var(--border-w) solid var(--card-border, rgba(23, 36, 44, 0.08));
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+}
+
+.card-tint-revenue { --card-tint: #f2faf6; --card-border: rgba(15, 110, 86, 0.10); }
+.card-tint-expense { --card-tint: #fdf4f3; --card-border: rgba(163, 45, 45, 0.10); }
+.card-tint-brand   { --card-tint: #fff6f1; --card-border: rgba(216, 90, 48, 0.12); }
+.card-tint-neutral { --card-tint: #fafaf8; --card-border: rgba(23, 36, 44, 0.08); }
+
+/* Reception / at-a-glance surfaces: one shadow layer, no gradient wash, no
+   entry animation. Speed matters more than polish at 1am. */
+.card-flat {
+  background: var(--surface);
+  border: var(--border-w) solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: 0 1px 2px rgba(23, 36, 44, 0.05);
+}
+
+.card-interactive {
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+.card-interactive:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card-hover);
+}
+
+@keyframes card-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.card-animate-in {
+  animation: card-fade-in 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* --- Chart bar fills — gradient top-to-bottom, tinted by meaning ---------
+   Centralised here for the same reason .money-in/.money-out are: if a bar's
+   colour ever changes, it changes once. Components choose a tone class
+   (revenue/expense/neutral) — they never set a bar colour inline, and never
+   orange, which is reserved for interaction (see the invariants above). */
+.bar-track {
+  background: var(--page);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.bar-fill {
+  border-radius: 4px;
+}
+.bar-fill-revenue {
+  background: linear-gradient(180deg, #2ea583 0%, var(--money-in) 100%);
+  box-shadow: 0 3px 8px -3px rgba(15, 110, 86, 0.45);
+}
+.bar-fill-expense {
+  background: linear-gradient(180deg, #c15353 0%, var(--money-out) 100%);
+  box-shadow: 0 3px 8px -3px rgba(163, 45, 45, 0.45);
+}
+.bar-fill-neutral {
+  background: linear-gradient(180deg, #b9b6ac 0%, var(--text-faint) 100%);
+  box-shadow: 0 3px 8px -3px rgba(136, 135, 128, 0.35);
+}
+
+/* --- Sidebar — floating panel with depth and motion ----------------------
+   The nav chrome, not page content — reception's "flatter, faster" density
+   rule (see .card-flat above) is about the night-report form's own content
+   area, not this shell; the sidebar gets the same depth treatment for
+   every role, desktop and the mobile drawer alike. */
+.sidebar-panel {
+  background: linear-gradient(180deg, #ffffff, #fcfbf9);
+  border: 1px solid rgba(23, 36, 44, 0.07);
+  border-radius: 16px;
+  box-shadow:
+    0 1px 2px rgba(23, 36, 44, 0.04),
+    0 12px 32px -10px rgba(23, 36, 44, 0.14),
+    inset 0 1px 0 #fff;
+}
+
+.nav-group-label {
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.nav-item {
+  border-radius: 10px;
+  transition: background 150ms ease, transform 150ms ease;
+}
+.nav-item:hover {
+  background: #f4f3ef;
+  transform: translateX(2px);
+}
+
+/* The one place orange marks a nav item rather than data — CLAUDE.md's
+   "active nav" carve-out in the colour rule, not a chart/stat exception. */
+.nav-item-active,
+.nav-item-active:hover {
+  background: linear-gradient(145deg, #e8703f, #c24e28);
+  box-shadow:
+    0 4px 12px -3px rgba(216, 90, 48, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  color: #fff;
+  font-weight: 600;
+  transform: none;
+}
+
+.nav-badge-active {
+  background: #fff;
+  color: var(--brand);
+}
+/* Explicit exception to "badge is never orange" (see the invariants at the
+   top of this file) — asked for directly, scoped to this one nav badge. */
+.nav-badge-inactive {
+  background: var(--brand);
+  color: var(--on-brand);
+}
+
+.logo-mark {
+  background: linear-gradient(145deg, #e8703f, #c24e28);
+  box-shadow:
+    0 4px 12px -3px rgba(216, 90, 48, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  color: #fff;
+  border-radius: 8px;
+}
+
+.user-card {
+  background: linear-gradient(180deg, #ffffff, #fcfbf9);
+  border: 1px solid rgba(23, 36, 44, 0.07);
+  border-radius: 12px;
+  box-shadow:
+    0 1px 2px rgba(23, 36, 44, 0.04),
+    0 6px 16px -6px rgba(23, 36, 44, 0.12);
+}
+
+@keyframes nav-item-fade-in {
+  from { opacity: 0; transform: translateX(-4px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.nav-item-animate-in {
+  animation: nav-item-fade-in 320ms ease-out both;
+}
+
+/* --- Tables — white card container, subtle row hover ---------------------
+   Zebra stays off deliberately: the hover lift is the only per-row signal,
+   so it has to read clearly, and alternating backgrounds would compete
+   with it. Generous row padding lives on the <td>/<th> classes components
+   apply, not here — this is only the hover behaviour. */
+.table-row-hover {
+  transition: background 150ms ease, transform 150ms ease, box-shadow 150ms ease;
+}
+.table-row-hover:hover {
+  background: #f4f3ef; /* same hover tint as the sidebar nav, for consistency */
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px -3px rgba(23, 36, 44, 0.12);
+}
+
+/* --- Primary buttons — raised orange, matching the sidebar's active pill
+   and logo mark so "raised orange" reads as one consistent material
+   across nav and forms, not two different treatments. */
+.btn-primary {
+  background: linear-gradient(145deg, #e8703f, #c24e28);
+  color: var(--on-brand);
+  box-shadow:
+    0 4px 12px -3px rgba(216, 90, 48, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+}
+.btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 6px 16px -3px rgba(216, 90, 48, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+.btn-primary:active {
+  transform: translateY(1px);
+  box-shadow:
+    0 2px 6px -2px rgba(216, 90, 48, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+.btn-primary:disabled {
+  transform: none;
+  cursor: default;
 }
 
 /* --- Motion -------------------------------------------------------------- */

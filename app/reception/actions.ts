@@ -9,6 +9,7 @@ import {
   requiresVarianceReason,
   revenueGap,
   totalRevenueSen,
+  otaReceivableSen,
 } from "@/lib/nightReport";
 import {
   ensureBusinessDaysIndexes,
@@ -57,6 +58,7 @@ async function validateFigures(
 
   const gap = revenueGap({
     totalRevenueSen: totalRevenueSen(input.rooms.revenueSen, input.revenueLines),
+    otaReceivableSen: otaReceivableSen(input.otaBookings),
     collections: input.collections,
   });
   if (
@@ -161,6 +163,7 @@ export async function submitNightReport(
     status: "submitted" as const,
     rooms: input.rooms,
     revenueLines: input.revenueLines,
+    otaBookings: input.otaBookings,
     collections: input.collections,
     expenses: input.expenses.map((e) => ({ ...e, enteredBy: user.sub })),
     cash: {
@@ -251,6 +254,7 @@ export async function editNightReport(
   const set = {
     rooms: input.rooms,
     revenueLines: input.revenueLines,
+    otaBookings: input.otaBookings,
     collections: input.collections,
     expenses: input.expenses.map((e) => ({ ...e, enteredBy: user.sub })),
     cash: {

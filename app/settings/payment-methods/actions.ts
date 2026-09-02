@@ -7,6 +7,7 @@ import {
   createPaymentMethod,
   updatePaymentMethod,
 } from "@/lib/paymentMethodsStore";
+import { setPaymentMethodAccount as setPaymentMethodAccountStore } from "@/lib/accountsStore";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -59,6 +60,21 @@ export async function setPaymentMethodActive(
   const user = await requireUser("manager");
   try {
     await updatePaymentMethod(id, { active }, { id: user.sub, role: user.role });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
+/** Links (or unlinks) which account this method's money lands in — separate
+ * from the main edit form, same one-click pattern as setPaymentMethodActive. */
+export async function setPaymentMethodAccount(
+  id: string,
+  accountId: string | null,
+): Promise<ActionResult> {
+  const user = await requireUser("manager");
+  try {
+    await setPaymentMethodAccountStore(id, accountId, { id: user.sub, role: user.role });
     return { ok: true };
   } catch (err) {
     return { ok: false, error: (err as Error).message };

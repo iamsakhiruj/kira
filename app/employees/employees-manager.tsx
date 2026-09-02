@@ -4,6 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { fromSen, toSen, formatRM } from "@/lib/money";
 import { PAY_TYPES, EMPLOYEE_STATUSES } from "@/lib/employees";
+import Badge, { type BadgeTone } from "@/components/ui/badge";
+import FormPanel from "@/components/ui/form-panel";
+import DataTable from "@/components/ui/data-table";
 import { addEmployee, editEmployee } from "./actions";
 
 type PayType = (typeof PAY_TYPES)[number];
@@ -14,6 +17,12 @@ const STATUS_LABELS: Record<Status, string> = {
   on_leave: "On leave",
   paused: "Paused",
   resigned: "Resigned",
+};
+const STATUS_TONE: Record<Status, BadgeTone> = {
+  active: "neutral",
+  on_leave: "warn",
+  paused: "muted",
+  resigned: "muted",
 };
 
 /** Manager-editable fields — present for both roles. */
@@ -404,19 +413,16 @@ function EmployeeForm({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-card border p-4" style={fieldStyle}>
+    <FormPanel error={error} animate={!employeeId}>
       <ManagerFieldInputs value={manager} onChange={setManager} />
       {role === "owner" ? <OwnerFieldInputs value={owner} onChange={setOwner} /> : null}
-      {error ? (
-        <p style={{ fontSize: "var(--text-label)", color: "var(--warn)" }}>{error}</p>
-      ) : null}
       <div className="flex gap-2">
         <button
           type="button"
           disabled={pending}
           onClick={submit}
-          className="h-11 rounded-card px-4 font-medium"
-          style={{ background: "var(--brand)", color: "var(--on-brand)", opacity: pending ? 0.7 : 1 }}
+          className="btn-primary h-11 rounded-card px-4 font-medium"
+          style={{ opacity: pending ? 0.7 : 1 }}
         >
           {pending ? "Saving…" : employeeId ? "Save changes" : "Add employee"}
         </button>
@@ -426,7 +432,7 @@ function EmployeeForm({
           </button>
         ) : null}
       </div>
-    </div>
+    </FormPanel>
   );
 }
 
@@ -440,18 +446,20 @@ function EmployeeRowView({ employee, role }: { employee: EmployeeRow; role: "man
     );
   }
   return (
-    <tr style={{ borderBottom: "1px solid var(--border)" }}>
-      <td className="p-2">{employee.name}</td>
-      <td className="p-2">{employee.position}</td>
-      <td className="p-2">{employee.department || "—"}</td>
-      <td className="p-2">{STATUS_LABELS[employee.status]}</td>
+    <tr className="table-row-hover" style={{ borderBottom: "1px solid var(--border)" }}>
+      <td className="px-4 py-3">{employee.name}</td>
+      <td className="px-4 py-3">{employee.position}</td>
+      <td className="px-4 py-3">{employee.department || "—"}</td>
+      <td className="px-4 py-3">
+        <Badge tone={STATUS_TONE[employee.status]}>{STATUS_LABELS[employee.status]}</Badge>
+      </td>
       {role === "owner" ? (
-        <td className="p-2 money">
+        <td className="px-4 py-3 money">
           {employee.payType === "monthly" ? "Monthly " : "Daily "}
           {formatRM(employee.basicAmountSen ?? 0)}
         </td>
       ) : null}
-      <td className="p-2 text-right">
+      <td className="px-4 py-3 text-right">
         <button type="button" onClick={() => setEditing(true)} style={{ color: "var(--brand)" }}>
           Edit
         </button>
@@ -469,36 +477,42 @@ export default function EmployeesManager({
 }) {
   const [adding, setAdding] = useState(false);
 
+  const columns = [
+    { key: "name", header: "Name" },
+    { key: "position", header: "Position" },
+    { key: "department", header: "Department" },
+    { key: "status", header: "Status" },
+    ...(role === "owner" ? [{ key: "pay", header: "Pay" }] : []),
+    { key: "actions", header: "" },
+  ];
+
   return (
     <div className="flex flex-col gap-4">
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse" style={{ fontSize: "var(--text-label)" }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid var(--border-strong)" }}>
-              <th className="p-2 text-left">Name</th>
-              <th className="p-2 text-left">Position</th>
-              <th className="p-2 text-left">Department</th>
-              <th className="p-2 text-left">Status</th>
-              {role === "owner" ? <th className="p-2 text-left">Pay</th> : null}
-              <th className="p-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {employees.length === 0 ? (
-              <tr>
-                <td className="p-2" colSpan={role === "owner" ? 6 : 5} style={{ color: "var(--text-muted)" }}>
-                  No employees yet.
-                </td>
-              </tr>
-            ) : (
-              employees.map((e) => <EmployeeRowView key={e.id} employee={e} role={role} />)
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={columns}
+        isEmpty={employees.length === 0}
+        emptyMessage="No employees yet."
+        emptyAction={
+          !adding ? (
+            <button
+              type="button"
+              onClick={() => setAdding(true)}
+              className="h-11 rounded-card border px-4"
+              style={{ borderColor: "var(--border-strong)", color: "var(--brand)" }}
+            >
+              + Add employee
+            </button>
+          ) : undefined
+        }
+        animate
+      >
+        {employees.map((e) => (
+          <EmployeeRowView key={e.id} employee={e} role={role} />
+        ))}
+      </DataTable>
       {adding ? (
         <EmployeeForm role={role} onDone={() => setAdding(false)} />
-      ) : (
+      ) : employees.length > 0 ? (
         <button
           type="button"
           onClick={() => setAdding(true)}
@@ -507,7 +521,7 @@ export default function EmployeesManager({
         >
           + Add employee
         </button>
-      )}
+      ) : null}
     </div>
   );
 }

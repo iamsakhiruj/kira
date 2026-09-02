@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Badge from "@/components/ui/badge";
+import FormPanel from "@/components/ui/form-panel";
+import DataTable from "@/components/ui/data-table";
 import { addUser, editUser, setActive, resetPassword } from "./actions";
 
 // Kept local rather than imported from lib/users (a server module that pulls in
@@ -68,7 +71,7 @@ function EditRow({
 
   return (
     <tr style={{ borderBottom: "1px solid var(--border)" }}>
-      <td className="p-2">
+      <td className="px-4 py-3">
         <input
           aria-label="Name"
           className="h-9 rounded border px-2"
@@ -77,10 +80,10 @@ function EditRow({
           onChange={(e) => setName(e.target.value)}
         />
       </td>
-      <td className="p-2" style={{ color: "var(--text-muted)" }}>
+      <td className="px-4 py-3" style={{ color: "var(--text-muted)" }}>
         {user.email}
       </td>
-      <td className="p-2">
+      <td className="px-4 py-3">
         <select
           aria-label="Role"
           className="h-9 rounded border px-2"
@@ -96,7 +99,7 @@ function EditRow({
           ))}
         </select>
       </td>
-      <td className="p-2" colSpan={3}>
+      <td className="px-4 py-3" colSpan={3}>
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -148,8 +151,8 @@ function ResetRow({
 
   return (
     <tr style={{ borderBottom: "1px solid var(--border)" }}>
-      <td className="p-2">{user.name}</td>
-      <td className="p-2" colSpan={5}>
+      <td className="px-4 py-3">{user.name}</td>
+      <td className="px-4 py-3" colSpan={5}>
         <div className="flex flex-wrap items-center gap-3">
           <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>
             New password for {user.email}:
@@ -179,7 +182,9 @@ function ResetRow({
           <p style={{ fontSize: "var(--text-caption)", color: "var(--warn)" }}>{error}</p>
         ) : (
           <p style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}>
-            At least 12 characters. The owner sets it directly and shares it with the user.
+            At least 8 characters. Three simple words work well — easier to type than a
+            complex password, and stronger. The owner sets it directly and shares it with
+            the user.
           </p>
         )}
       </td>
@@ -223,30 +228,28 @@ function Row({ user, isSelf }: { user: UserRow; isSelf: boolean }) {
   const dim = { opacity: user.active ? 1 : 0.5 };
 
   return (
-    <tr style={{ borderBottom: "1px solid var(--border)" }}>
-      <td className="p-2" style={dim}>
+    <tr className="table-row-hover" style={{ borderBottom: "1px solid var(--border)" }}>
+      <td className="px-4 py-3" style={dim}>
         {user.name}
         {isSelf ? (
           <span style={{ color: "var(--text-faint)" }}> (you)</span>
         ) : null}
       </td>
-      <td className="p-2" style={{ ...dim, color: "var(--text-muted)" }}>
+      <td className="px-4 py-3" style={{ ...dim, color: "var(--text-muted)" }}>
         {user.email}
       </td>
-      <td className="p-2" style={dim}>
+      <td className="px-4 py-3" style={dim}>
         {ROLE_LABELS[user.role]}
       </td>
-      <td className="p-2">
-        {user.active ? (
-          <span style={{ color: "var(--text)" }}>Active</span>
-        ) : (
-          <span style={{ color: "var(--text-faint)" }}>Inactive</span>
-        )}
+      <td className="px-4 py-3">
+        <Badge tone={user.active ? "neutral" : "muted"}>
+          {user.active ? "Active" : "Inactive"}
+        </Badge>
       </td>
-      <td className="p-2" style={{ ...dim, color: "var(--text-muted)" }}>
+      <td className="px-4 py-3" style={{ ...dim, color: "var(--text-muted)" }}>
         {user.lastSignIn ?? "Never"}
       </td>
-      <td className="p-2 text-right">
+      <td className="px-4 py-3 text-right">
         <div className="flex flex-col items-end gap-1">
           <div className="flex justify-end gap-3">
             <button type="button" onClick={() => setMode("edit")} style={{ color: "var(--brand)" }}>
@@ -306,8 +309,7 @@ function AddUserForm() {
   }
 
   return (
-    <div className="mt-4 flex flex-col gap-2 rounded-card border p-3" style={fieldStyle}>
-      <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>Add user</h2>
+    <FormPanel title="Add user" error={error}>
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-1">
           <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Name</span>
@@ -365,20 +367,20 @@ function AddUserForm() {
           type="button"
           disabled={pending}
           onClick={add}
-          className="h-9 rounded-card px-4 font-medium"
-          style={{ background: "var(--brand)", color: "var(--on-brand)", opacity: pending ? 0.7 : 1 }}
+          className="btn-primary h-9 rounded-card px-4 font-medium"
+          style={{ opacity: pending ? 0.7 : 1 }}
         >
           {pending ? "Adding…" : "Add"}
         </button>
       </div>
-      {error ? (
-        <p style={{ fontSize: "var(--text-label)", color: "var(--warn)" }}>{error}</p>
-      ) : (
+      {!error ? (
         <p style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}>
-          Password: at least 12 characters, not an obvious one. You set it and share it with the user.
+          Password: at least 8 characters. Three simple words work well — easier to type
+          than a complex password, and stronger. Not an obvious one — you set it and share
+          it with the user.
         </p>
-      )}
-    </div>
+      ) : null}
+    </FormPanel>
   );
 }
 
@@ -391,25 +393,22 @@ export default function UsersManager({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse" style={{ fontSize: "var(--text-label)" }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid var(--border-strong)" }}>
-              <th className="p-2 text-left">Name</th>
-              <th className="p-2 text-left">Email</th>
-              <th className="p-2 text-left">Role</th>
-              <th className="p-2 text-left">Status</th>
-              <th className="p-2 text-left">Last sign-in</th>
-              <th className="p-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <Row key={u.id} user={u} isSelf={u.id === currentUserId} />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={[
+          { key: "name", header: "Name" },
+          { key: "email", header: "Email" },
+          { key: "role", header: "Role" },
+          { key: "status", header: "Status" },
+          { key: "lastSignIn", header: "Last sign-in" },
+          { key: "actions", header: "" },
+        ]}
+        isEmpty={users.length === 0}
+        emptyMessage="No users yet."
+      >
+        {users.map((u) => (
+          <Row key={u.id} user={u} isSelf={u.id === currentUserId} />
+        ))}
+      </DataTable>
       <AddUserForm />
     </div>
   );

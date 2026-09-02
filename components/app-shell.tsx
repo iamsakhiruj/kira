@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { isAuthorized, type Role } from "@/lib/session";
 import { getPendingBusinessDays } from "@/lib/businessDays";
 import { logout } from "@/app/login/actions";
 import SidebarToggle from "./sidebar-toggle";
+import NavList, { type NavGroupData, type NavItemData } from "./nav-list";
 
 const ROLE_LABELS: Record<Role, string> = {
   reception: "Reception",
@@ -28,82 +28,98 @@ function initials(name: string): string {
  * *reachable* (CLAUDE.md rule 7 — access is enforced server-side by each
  * route's own guard, never by hiding a menu item — this filtering is a
  * convenience so a role never sees a link to somewhere it can't go).
+ *
+ * Grouped under muted uppercase labels (Daily / Money / People / Settings)
+ * — a flat visual pattern, including Settings, which used to be a clickable
+ * parent row with indented children (confirmed with the user: flatten it
+ * to match the other three groups rather than keep the old nesting).
  */
 
-interface NavItem {
+interface NavItemDef {
   label: string;
-  href?: string;
+  href: string;
   minRole: Role;
-  children?: NavItem[];
+  icon: NavItemData["icon"];
 }
 
-const NAV: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", minRole: "manager" },
-  { label: "Front desk", href: "/reception", minRole: "reception" },
-  { label: "Revenue", href: "/revenue", minRole: "manager" },
-  { label: "Expenses", href: "/expenses", minRole: "manager" },
-  { label: "Employees", href: "/employees", minRole: "manager" },
-  { label: "Salary", href: "/salary", minRole: "owner" },
-  { label: "Partners", href: "/partners", minRole: "owner" },
-  { label: "Reports", href: "/reports", minRole: "reception" },
+interface NavGroupDef {
+  label: string;
+  items: NavItemDef[];
+}
+
+// Icons are referenced by name, not by component — a lucide component
+// reference isn't a plain object and can't cross the Server->Client
+// boundary as a prop (NavList, which renders these, is a Client Component).
+// nav-list.tsx's ICONS map resolves the name on the client; IconName there
+// is a union of its keys, so a typo here fails to compile rather than
+// silently rendering no icon.
+const NAV_GROUPS: NavGroupDef[] = [
+  {
+    label: "Daily",
+    items: [
+      { label: "Dashboard", href: "/dashboard", minRole: "manager", icon: "LayoutDashboard" },
+      { label: "Front desk", href: "/reception", minRole: "reception", icon: "ClipboardList" },
+      { label: "OTA", href: "/ota", minRole: "manager", icon: "Globe" },
+    ],
+  },
+  {
+    label: "Money",
+    items: [
+      { label: "Revenue", href: "/revenue", minRole: "manager", icon: "TrendingUp" },
+      { label: "Expenses", href: "/expenses", minRole: "manager", icon: "TrendingDown" },
+      { label: "Accounts", href: "/accounts", minRole: "manager", icon: "Landmark" },
+      { label: "Reports", href: "/reports", minRole: "reception", icon: "FileText" },
+    ],
+  },
+  {
+    label: "People",
+    items: [
+      { label: "Employees", href: "/employees", minRole: "manager", icon: "Users" },
+      { label: "Salary", href: "/salary", minRole: "owner", icon: "Wallet" },
+      { label: "Partners", href: "/partners", minRole: "owner", icon: "Handshake" },
+    ],
+  },
   {
     label: "Settings",
-    minRole: "manager",
-    children: [
-      { label: "Categories", href: "/settings/categories", minRole: "manager" },
-      { label: "Payment methods", href: "/settings/payment-methods", minRole: "manager" },
-      { label: "Users", href: "/settings/users", minRole: "owner" },
+    items: [
+      { label: "Categories", href: "/settings/categories", minRole: "manager", icon: "Tag" },
+      { label: "Payment methods", href: "/settings/payment-methods", minRole: "manager", icon: "CreditCard" },
+      { label: "OTA platforms", href: "/settings/ota-platforms", minRole: "manager", icon: "Settings" },
+      { label: "Accounts", href: "/settings/accounts", minRole: "owner", icon: "Landmark" },
+      { label: "Users", href: "/settings/users", minRole: "owner", icon: "UserCog" },
     ],
   },
 ];
 
-function visibleFor(role: Role, items: NavItem[]): NavItem[] {
-  return items
-    .filter((item) => isAuthorized(role, item.minRole))
-    .map((item) =>
-      item.children ? { ...item, children: visibleFor(role, item.children) } : item,
-    )
-    .filter((item) => !item.children || item.children.length > 0);
+function visibleGroups(
+  role: Role,
+  groups: NavGroupDef[],
+  pendingCount: number,
+): NavGroupData[] {
+  return groups
+    .map((g) => ({
+      label: g.label,
+      items: g.items
+        .filter((item) => isAuthorized(role, item.minRole))
+        .map((item) => ({
+          label: item.label,
+          href: item.href,
+          icon: item.icon,
+          badge: item.href === "/reception" ? pendingCount || undefined : undefined,
+        })),
+    }))
+    .filter((g) => g.items.length > 0);
 }
 
-function NavLink({
-  item,
-  badge,
-}: {
-  item: NavItem;
-  badge?: number;
-}) {
-  if (!item.href) {
-    return (
-      <div
-        className="px-3 pt-3 pb-1"
-        style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}
-      >
-        {item.label}
-      </div>
-    );
-  }
+function LogoMark() {
   return (
-    <Link
-      href={item.href}
-      className="flex items-center justify-between rounded px-3 py-2"
-      style={{ fontSize: "var(--text-label)", color: "var(--text)" }}
+    <span
+      className="logo-mark flex shrink-0 items-center justify-center"
+      style={{ width: 30, height: 30, fontSize: 15, fontWeight: 700 }}
+      aria-hidden="true"
     >
-      <span>{item.label}</span>
-      {badge ? (
-        <span
-          className="rounded-full px-2 py-0.5"
-          style={{
-            fontSize: "var(--text-caption)",
-            fontWeight: 600,
-            background: "var(--warn-bg)",
-            color: "var(--warn)",
-          }}
-        >
-          {badge}
-        </span>
-      ) : null}
-    </Link>
+      K
+    </span>
   );
 }
 
@@ -116,88 +132,75 @@ export default async function AppShell({
   userName: string;
   children: ReactNode;
 }) {
-  const items = visibleFor(role, NAV);
   const pendingCount = isAuthorized(role, "manager")
     ? (await getPendingBusinessDays()).length
     : 0;
+  const groups = visibleGroups(role, NAV_GROUPS, pendingCount);
 
   const nav = (
-    <div className="flex flex-1 flex-col justify-between">
-      <nav className="flex flex-col gap-0.5 p-2">
-        {items.map((item) =>
-          item.children ? (
-            <div key={item.label}>
-              <NavLink item={item} />
-              <div className="ml-2 flex flex-col gap-0.5">
-                {item.children.map((child) => (
-                  <NavLink key={child.href} item={child} />
-                ))}
-              </div>
-            </div>
-          ) : (
-            <NavLink
-              key={item.href}
-              item={item}
-              badge={item.href === "/reception" ? pendingCount : undefined}
-            />
-          ),
-        )}
-      </nav>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <NavList groups={groups} />
+      </div>
       {/* User info + sign out live in the sidebar itself (not a separate
           desktop-only header bar) so they're reachable the same way on
-          mobile — inside the drawer — as on desktop. Stacked (name+role row,
-          then sign out on its own row) rather than crammed into one row —
-          a single row here previously let the role label collide with
-          sign-out once the name was more than a couple of characters wide. */}
-      <div
-        className="flex flex-col gap-2 border-t p-3"
-        style={{ borderColor: "var(--border)" }}
-      >
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            className="flex shrink-0 items-center justify-center rounded-full"
-            style={{
-              width: 32,
-              height: 32,
-              background: "var(--brand-tint)",
-              color: "var(--brand)",
-              fontSize: "var(--text-caption)",
-              fontWeight: 600,
-            }}
-            aria-hidden="true"
-          >
-            {initials(userName)}
-          </span>
-          <div className="flex min-w-0 flex-col">
+          mobile — inside the drawer — as on desktop. Pinned below the
+          scrollable nav list (mt-auto, outside the overflow area) rather
+          than relying on justify-between across the whole sidebar height,
+          which used to let a tall nav list push this card out of view. */}
+      <div className="mt-auto shrink-0 p-3">
+        <div className="user-card flex flex-col gap-2 p-3">
+          <div className="flex min-w-0 items-center gap-2">
             <span
-              className="truncate"
-              style={{ fontSize: "var(--text-label)", color: "var(--text)" }}
+              className="flex shrink-0 items-center justify-center rounded-full"
+              style={{
+                width: 32,
+                height: 32,
+                background: "var(--brand-tint)",
+                color: "var(--brand)",
+                fontSize: "var(--text-caption)",
+                fontWeight: 600,
+              }}
+              aria-hidden="true"
             >
-              {userName}
+              {initials(userName)}
             </span>
-            <span style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}>
-              {ROLE_LABELS[role]}
-            </span>
+            <div className="flex min-w-0 flex-col">
+              <span
+                className="truncate"
+                style={{ fontSize: "var(--text-label)", color: "var(--text)" }}
+              >
+                {userName}
+              </span>
+              <span style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}>
+                {ROLE_LABELS[role]}
+              </span>
+            </div>
           </div>
+          <form action={logout}>
+            <button
+              type="submit"
+              className="w-full text-left"
+              style={{ fontSize: "var(--text-label)", color: "var(--brand)" }}
+            >
+              Sign out
+            </button>
+          </form>
         </div>
-        <form action={logout}>
-          <button
-            type="submit"
-            className="w-full text-left"
-            style={{ fontSize: "var(--text-label)", color: "var(--brand)" }}
-          >
-            Sign out
-          </button>
-        </form>
       </div>
+    </div>
+  );
+
+  const header = (
+    <div className="flex items-center gap-2">
+      <LogoMark />
+      <span style={{ fontWeight: 600 }}>Hotel Bintang KL</span>
     </div>
   );
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
-      <SidebarToggle header={<span style={{ fontWeight: 600 }}>Hotel Bintang KL</span>}>
-        {nav}
-      </SidebarToggle>
+      <SidebarToggle header={header}>{nav}</SidebarToggle>
       <main className="min-w-0 flex-1 p-4">{children}</main>
     </div>
   );

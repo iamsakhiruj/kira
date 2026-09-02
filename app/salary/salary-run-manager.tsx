@@ -4,6 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { fromSen, toSen, formatRM } from "@/lib/money";
+import { ORDINARY_RATE_DIVISOR } from "@/lib/salary";
+import Badge from "@/components/ui/badge";
+import FormPanel from "@/components/ui/form-panel";
+import DataTable from "@/components/ui/data-table";
 import { refreshRun, updateLine, markPaid, adjustLine } from "./actions";
 
 interface Method {
@@ -51,19 +55,6 @@ function parseMoney(s: string): number | null {
   } catch {
     return null;
   }
-}
-
-function Badge({ text, tone }: { text: string; tone: "brand" | "warn" | "muted" }) {
-  const color =
-    tone === "warn" ? "var(--warn)" : tone === "brand" ? "var(--brand)" : "var(--text-muted)";
-  return (
-    <span
-      className="rounded px-2 py-0.5"
-      style={{ fontSize: "var(--text-caption)", color, border: `1px solid ${color}` }}
-    >
-      {text}
-    </span>
-  );
 }
 
 function EditForm({ line, methods, onDone }: { line: Line; methods: Method[]; onDone: () => void }) {
@@ -292,27 +283,34 @@ function Row({ line, methods }: { line: Line; methods: Method[] }) {
   if (mode === "edit") return <EditForm line={line} methods={methods} onDone={() => setMode("view")} />;
   if (mode === "pay") return <PayForm line={line} methods={methods} onDone={() => setMode("view")} />;
 
+  // The unpaid-absence deduction always uses the fixed Employment Act
+  // s.60I ordinary-rate divisor (26), never workingDaysInMonth — that
+  // field is separate month context (calendar days minus rest days minus
+  // public holidays) that happens to equal the raw calendar day count
+  // whenever a month's attendance hasn't been marked yet, which is
+  // exactly how this line could end up implying a deduction was computed
+  // against "30 working days" when it never was. State the real basis.
   const basis =
     line.payType === "monthly"
-      ? `Monthly · ${line.unpaidAbsenceDays} unpaid / ${line.workingDaysInMonth} working days`
+      ? `Monthly · ${line.unpaidAbsenceDays} unpaid day${line.unpaidAbsenceDays === 1 ? "" : "s"} (1/${ORDINARY_RATE_DIVISOR} ordinary rate)`
       : `Daily · ${line.presentDays} days present`;
 
   return (
-    <tr style={{ borderBottom: "1px solid var(--border)" }}>
-      <td className="p-2">
+    <tr className="table-row-hover" style={{ borderBottom: "1px solid var(--border)" }}>
+      <td className="px-4 py-3">
         <div className="flex flex-col">
           <span className="flex items-center gap-2">
             {line.employeeName}
-            {line.directorRemuneration ? <Badge text="Director" tone="brand" /> : null}
-            {line.isAdjustment ? <Badge text="Adjustment" tone="warn" /> : null}
+            {line.directorRemuneration ? <Badge tone="brand">Director</Badge> : null}
+            {line.isAdjustment ? <Badge tone="warn">Adjustment</Badge> : null}
           </span>
           <span style={{ fontSize: "var(--text-caption)", color: "var(--text-muted)" }}>
             {line.position || "—"} · {basis}
           </span>
         </div>
       </td>
-      <td className="p-2 money">{formatRM(line.grossSen)}</td>
-      <td className="p-2 money">
+      <td className="px-4 py-3 money">{formatRM(line.grossSen)}</td>
+      <td className="px-4 py-3 money">
         <div className="flex flex-col">
           <span>{formatRM(line.totalDeductionsSen)}</span>
           <span style={{ fontSize: "var(--text-caption)", color: "var(--text-muted)" }}>
@@ -322,25 +320,25 @@ function Row({ line, methods }: { line: Line; methods: Method[] }) {
           </span>
         </div>
       </td>
-      <td className="p-2 money" style={line.netSen < 0 ? { color: "var(--warn)" } : undefined}>
+      <td className="px-4 py-3 money" style={line.netSen < 0 ? { color: "var(--warn)" } : undefined}>
         {formatRM(line.netSen)}
         {line.netSen < 0 ? (
           <span className="block" style={{ fontSize: "var(--text-caption)" }}>over-deducted</span>
         ) : null}
       </td>
-      <td className="p-2">
+      <td className="px-4 py-3">
         {line.status === "paid" ? (
-          <div className="flex flex-col">
-            <span style={{ color: "var(--text)" }}>Paid</span>
+          <div className="flex flex-col gap-1">
+            <Badge tone="neutral">Paid</Badge>
             <span style={{ fontSize: "var(--text-caption)", color: "var(--text-muted)" }}>
               {line.paidDate} · {line.paymentMethodName ?? "—"}
             </span>
           </div>
         ) : (
-          <span style={{ color: "var(--text-muted)" }}>Draft</span>
+          <Badge tone="muted">Draft</Badge>
         )}
       </td>
-      <td className="p-2 text-right">
+      <td className="px-4 py-3 text-right">
         <div className="flex flex-col items-end gap-1">
           <div className="flex justify-end gap-3">
             <Link href={`/salary/${line.id}`} style={{ color: "var(--brand)" }}>
@@ -412,65 +410,54 @@ export default function SalaryRunManager({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end gap-3 rounded-card border p-3" style={fieldStyle}>
-        <label className="flex flex-col gap-1">
-          <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Month</span>
-          <input
-            type="month"
-            className="h-11 rounded border px-3"
-            style={fieldStyle}
-            defaultValue={month}
-            onChange={(e) => changeMonth(e.target.value)}
-          />
-        </label>
-        <button
-          type="button"
-          disabled={pending}
-          onClick={refresh}
-          className="h-11 rounded-card px-4 font-medium"
-          style={{ background: "var(--brand)", color: "var(--on-brand)", opacity: pending ? 0.7 : 1 }}
-        >
-          {pending ? "Working…" : lines.length ? "Refresh draft from attendance" : "Generate draft run"}
-        </button>
-        <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>
-          {activeEmployeeCount} active employee{activeEmployeeCount === 1 ? "" : "s"} ·{" "}
-          {baseLines.length} line{baseLines.length === 1 ? "" : "s"} · {paidCount} paid
-        </span>
-      </div>
+      <FormPanel error={error} delayMs={0}>
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1">
+            <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Month</span>
+            <input
+              type="month"
+              className="h-11 rounded border px-3"
+              style={fieldStyle}
+              defaultValue={month}
+              onChange={(e) => changeMonth(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={refresh}
+            className="btn-primary h-11 rounded-card px-4 font-medium"
+            style={{ opacity: pending ? 0.7 : 1 }}
+          >
+            {pending ? "Working…" : lines.length ? "Refresh draft from attendance" : "Generate draft run"}
+          </button>
+          <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>
+            {activeEmployeeCount} active employee{activeEmployeeCount === 1 ? "" : "s"} ·{" "}
+            {baseLines.length} line{baseLines.length === 1 ? "" : "s"} · {paidCount} paid
+          </span>
+        </div>
+        {message ? (
+          <p style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>{message}</p>
+        ) : null}
+      </FormPanel>
 
-      {message ? (
-        <p style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>{message}</p>
-      ) : null}
-      {error ? (
-        <p style={{ fontSize: "var(--text-label)", color: "var(--warn)" }}>{error}</p>
-      ) : null}
-
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse" style={{ fontSize: "var(--text-label)" }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid var(--border-strong)" }}>
-              <th className="p-2 text-left">Employee</th>
-              <th className="p-2 text-right">Gross</th>
-              <th className="p-2 text-right">Deductions</th>
-              <th className="p-2 text-right">Net</th>
-              <th className="p-2 text-left">Status</th>
-              <th className="p-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {lines.length === 0 ? (
-              <tr>
-                <td className="p-3" colSpan={6} style={{ color: "var(--text-muted)" }}>
-                  No run for this month yet. Generate the draft to compute each active
-                  employee&apos;s pay from their attendance.
-                </td>
-              </tr>
-            ) : (
-              lines.map((l) => <Row key={l.id} line={l} methods={methods} />)
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        delayMs={40}
+        columns={[
+          { key: "employee", header: "Employee" },
+          { key: "gross", header: "Gross", align: "right" },
+          { key: "deductions", header: "Deductions", align: "right" },
+          { key: "net", header: "Net", align: "right" },
+          { key: "status", header: "Status" },
+          { key: "actions", header: "" },
+        ]}
+        isEmpty={lines.length === 0}
+        emptyMessage="No run for this month yet. Generate the draft to compute each active employee's pay from their attendance."
+      >
+        {lines.map((l) => (
+          <Row key={l.id} line={l} methods={methods} />
+        ))}
+      </DataTable>
     </div>
   );
 }

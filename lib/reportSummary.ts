@@ -26,17 +26,22 @@ export interface NightDayDoc {
     revenueSen: number;
   };
   revenueLines: { category: string; amountSen: number }[];
+  otaBookings?: { platformId: string; bookingsCount: number; roomRevenueSen: number; guestPaidPlatform: boolean }[];
   expenses: { category: string; amountSen: number; paidBy: "cash" | "card" }[];
   collections: {
     cashSen: number;
     cardSen: number;
     transferSen: number;
     ewalletSen: number;
-    otaPrepaidSen: number;
     chargeToAccountSen: number;
     depositsSen: number;
     refundsSen: number;
     receivablesSettledSen: number;
+    /** Legacy, pre-OTA-platforms field. Read-only — new documents never
+     * set this (see otaReceivableSen in lib/nightReport.ts). Kept so
+     * historical reports (collectionsByChannel below) don't silently drop
+     * data from before this migration; never written by any code path. */
+    otaPrepaidSen?: number;
   };
   cash: {
     openingFloatSen: number;
@@ -217,8 +222,12 @@ export function collectionsByChannel(
     add("Card", c.cardSen);
     add("Bank transfer", c.transferSen);
     add("E-wallet", c.ewalletSen);
-    add("OTA prepaid", c.otaPrepaidSen);
     add("Charge to account", c.chargeToAccountSen);
+    // Legacy documents predating the OTA-platform redesign may still carry
+    // the old aggregate field. New documents never set it — the equivalent
+    // money doesn't move through "collections" at all for a
+    // guest-paid-platform OTA line (see otaReceivableSen).
+    if (c.otaPrepaidSen) add("OTA prepaid (legacy)", c.otaPrepaidSen);
   }
 
   for (const entry of standaloneRevenue) {

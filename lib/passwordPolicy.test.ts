@@ -25,7 +25,7 @@ describe("checkPasswordStrength", () => {
   });
 
   it("accepts exactly the minimum length when otherwise strong", () => {
-    const exact = "Kf7$mZ9!qWx2"; // 12 chars, no weak patterns
+    const exact = "Kf7$mZ9!"; // 8 chars, no weak patterns
     expect(exact.length).toBe(MIN_PASSWORD_LENGTH);
     expect(checkPasswordStrength(exact).ok).toBe(true);
   });

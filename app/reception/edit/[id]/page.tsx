@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { getBusinessDayById } from "@/lib/businessDays";
 import { getActiveCategories } from "@/lib/categoriesStore";
+import { getActiveOtaPlatforms } from "@/lib/otaPlatformsStore";
 import { PAID_BY } from "@/lib/nightReport";
 import NightReportEditor, { type EditorInitial } from "../../night-report-editor";
 
@@ -45,15 +46,29 @@ export default async function EditReportPage({
     );
   }
 
-  const [settings, revCats, expCats] = await Promise.all([
+  const [settings, revCats, expCats, otaPlatforms] = await Promise.all([
     getSettings(),
     getActiveCategories("revenue"),
     getActiveCategories("expense"),
+    getActiveOtaPlatforms(),
   ]);
   const revenueCategoryNames = revCats.filter((c) => !c.standaloneOnly).map((c) => c.name);
   const expenseCategoryNames = expCats.filter((c) => !c.standaloneOnly).map((c) => c.name);
 
   const c = day.collections ?? {};
+  type OtaBooking = { platformId: string; bookingsCount: number; roomRevenueSen: number; guestPaidPlatform: boolean };
+  const rawOtaBookings = (day.otaBookings ?? []) as OtaBooking[];
+  // A report submitted before this feature shipped may still be sitting
+  // "submitted" (unapproved) with the old aggregate field and no
+  // otaBookings array at all — bridge it into one prefilled line so the
+  // figure isn't silently dropped. platformId is left blank on purpose:
+  // the schema requires a real platform to save, so the manager must pick
+  // one (or delete the line) before this edit can be saved. Nothing is
+  // written to the database until they do.
+  const otaBookings: OtaBooking[] =
+    rawOtaBookings.length === 0 && (c.otaPrepaidSen ?? 0) > 0
+      ? [{ platformId: "", bookingsCount: 1, roomRevenueSen: c.otaPrepaidSen, guestPaidPlatform: true }]
+      : rawOtaBookings;
   const initial: EditorInitial = {
     rooms: {
       available: day.rooms?.available ?? 0,
@@ -65,9 +80,10 @@ export default async function EditReportPage({
     revenueLines: (day.revenueLines ?? []).map((l: { category: string; amountSen: number; note?: string }) => ({
       category: l.category, amountSen: l.amountSen, note: l.note ?? "",
     })),
+    otaBookings,
     collections: {
       cashSen: c.cashSen ?? 0, cardSen: c.cardSen ?? 0, transferSen: c.transferSen ?? 0,
-      ewalletSen: c.ewalletSen ?? 0, otaPrepaidSen: c.otaPrepaidSen ?? 0,
+      ewalletSen: c.ewalletSen ?? 0,
       chargeToAccountSen: c.chargeToAccountSen ?? 0, depositsSen: c.depositsSen ?? 0,
       refundsSen: c.refundsSen ?? 0, receivablesSettledSen: c.receivablesSettledSen ?? 0,
     },
@@ -95,6 +111,11 @@ export default async function EditReportPage({
       expenseCeilingSen={settings.expenseCeilingSen}
       revenueCategoryNames={revenueCategoryNames}
       expenseCategoryNames={expenseCategoryNames}
+      otaPlatforms={otaPlatforms.map((p) => ({
+        id: p._id.toString(),
+        name: p.name,
+        guestPaysPlatform: p.guestPaysPlatform,
+      }))}
     />
   );
 }

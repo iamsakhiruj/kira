@@ -4,9 +4,11 @@ import { useState, type ReactNode } from "react";
 
 /**
  * The only interactive piece of the shell — everything else in AppShell is
- * a server component. Desktop: sidebar is always visible. Mobile: hidden
- * behind a hamburger toggle, since reception is on a phone and the sidebar
- * would otherwise eat the whole screen before they reach the form.
+ * a server component. Desktop: the sidebar floats as a rounded card, sticky
+ * within a margin so the page's own background gradient shows behind it.
+ * Mobile: hidden behind a hamburger toggle, since reception is on a phone
+ * and the sidebar would otherwise eat the whole screen before they reach
+ * the form — opening it reveals the same floating-card treatment inline.
  */
 export default function SidebarToggle({
   header,
@@ -20,8 +22,8 @@ export default function SidebarToggle({
   return (
     <>
       <div
-        className="flex items-center justify-between border-b px-4 py-3 md:hidden"
-        style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+        className="flex items-center justify-between px-4 py-3 md:hidden"
+        style={{ background: "var(--page)" }}
       >
         {header}
         <button
@@ -36,10 +38,12 @@ export default function SidebarToggle({
         </button>
       </div>
       <aside
-        className={`${open ? "flex" : "hidden"} md:flex relative z-40 min-w-0 flex-col border-r md:w-56 md:shrink-0`}
-        style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+        className={`sidebar-panel ${open ? "flex" : "hidden"} relative z-40 m-4 min-w-0 flex-col overflow-hidden md:sticky md:top-4 md:flex md:h-[calc(100vh-2rem)] md:w-56 md:shrink-0`}
       >
-        <div className="hidden border-b p-3 md:block" style={{ borderColor: "var(--border)" }}>
+        <div
+          className="hidden items-center border-b p-3 md:flex"
+          style={{ borderColor: "rgba(23, 36, 44, 0.07)" }}
+        >
           {header}
         </div>
         {children}

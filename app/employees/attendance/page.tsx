@@ -2,6 +2,7 @@ import { getSettings } from "@/lib/settings";
 import { businessDateFor } from "@/lib/businessDate";
 import { getEmployeeNamesForAttendance } from "@/lib/employeesStore";
 import { ensureAttendanceIndexes, getAttendanceForMonth } from "@/lib/attendanceStore";
+import PageHeader from "@/components/ui/page-header";
 import AttendanceGrid from "./attendance-grid";
 
 // Depends on request-time data; never prerender.
@@ -33,14 +34,11 @@ export default async function AttendancePage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 style={{ fontSize: "var(--text-page-title)", fontWeight: 600 }}>
-          Attendance
-        </h1>
-        <p style={{ color: "var(--text-muted)" }}>
-          Record-keeping only — no pay is calculated here.
-        </p>
-      </div>
+      <PageHeader
+        title="Attendance"
+        description="Record-keeping only — no pay is calculated here."
+        animate
+      />
       <AttendanceGrid
         month={month}
         currentMonth={currentMonth}

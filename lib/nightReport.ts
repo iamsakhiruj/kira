@@ -105,18 +105,57 @@ export const CollectionsSchema = z.object({
   cardSen: nonNegSen,
   transferSen: nonNegSen,
   ewalletSen: nonNegSen,
-  otaPrepaidSen: nonNegSen,
   chargeToAccountSen: nonNegSen,
   depositsSen: nonNegSen,
   refundsSen: nonNegSen,
   // Money collected today (already counted above, in cash/card/transfer/
   // ewallet) that pays off a receivable booked on an *earlier* day — a
   // monthly guest settling last month's chargeToAccount balance, an OTA
-  // payout landing for a stay booked days ago. It corresponds to zero new
-  // revenue today, so the revenue/collections identity in revenueGap()
+  // remittance landing for a stay booked days ago. It corresponds to zero
+  // new revenue today, so the revenue/collections identity in revenueGap()
   // needs it to avoid a false gap on days this happens.
   receivablesSettledSen: nonNegSen,
 });
+
+// --- OTA bookings ------------------------------------------------------
+//
+// One line per OTA platform with bookings that night (reception only adds
+// a line when there were any — an ordinary night with none stays empty).
+// Room revenue for an OTA booking is already inside `rooms.revenueSen`
+// (rooms sold is one count regardless of channel) — this array is
+// attribution plus receivable bookkeeping, not additive to
+// totalRevenueSen(). `bookingsCount` is informational only, not
+// cross-checked against `rooms.sold`.
+export const OtaBookingLineSchema = z.object({
+  platformId: z.string().min(1, "Choose a platform."),
+  bookingsCount: z.number().int().min(1, "Enter at least 1 booking."),
+  roomRevenueSen: nonNegSen,
+  // true = guest paid the platform (this line becomes a receivable from
+  // that platform — revenue today, no cash at the desk). false = guest
+  // paid us (the amount is already inside collections.cashSen/cardSen/etc,
+  // so this line must contribute nothing further — see otaReceivableSen).
+  // Defaults from the platform's own guestPaysPlatform setting, always
+  // overridable per line.
+  guestPaidPlatform: z.boolean(),
+});
+
+export type OtaBookingLine = z.infer<typeof OtaBookingLineSchema>;
+
+/**
+ * The portion of tonight's OTA bookings that is a new receivable rather
+ * than cash already reflected in collections — guest-paid-us lines
+ * contribute nothing here, since that revenue is already inside whatever
+ * reception typed into collections.cashSen/cardSen/etc. Feeds revenueGap()
+ * in place of the old aggregate collections.otaPrepaidSen field.
+ */
+export function otaReceivableSen(
+  otaBookings: { roomRevenueSen: number; guestPaidPlatform: boolean }[],
+): number {
+  return otaBookings.reduce(
+    (sum, l) => sum + (l.guestPaidPlatform ? l.roomRevenueSen : 0),
+    0,
+  );
+}
 
 export const CashSchema = z.object({
   openingFloatSen: nonNegSen,
@@ -128,6 +167,7 @@ export const CashSchema = z.object({
 export const NightReportInputSchema = z.object({
   rooms: RoomsSchema,
   revenueLines: z.array(RevenueLineSchema).max(50),
+  otaBookings: z.array(OtaBookingLineSchema).max(30),
   collections: CollectionsSchema,
   expenses: z.array(ExpenseLineSchema).max(100),
   cash: CashSchema,
@@ -212,12 +252,14 @@ export function requiresVarianceReason(
 
 export interface RevenueGapInput {
   totalRevenueSen: number;
+  // Precomputed by the caller via otaReceivableSen() above — same idiom as
+  // totalRevenueSen itself, which the caller also precomputes.
+  otaReceivableSen: number;
   collections: {
     cashSen: number;
     cardSen: number;
     transferSen: number;
     ewalletSen: number;
-    otaPrepaidSen: number;
     chargeToAccountSen: number;
     refundsSen: number;
     receivablesSettledSen: number;
@@ -226,7 +268,7 @@ export interface RevenueGapInput {
 
 export interface RevenueGap {
   actualCollectionsSen: number; // cash+card+transfer+ewallet, minus refunds paid out
-  receivablesAddedSen: number; // OTA prepaid + charge to account
+  receivablesAddedSen: number; // OTA receivable + charge to account
   receivablesSettledSen: number;
   expectedRevenueSen: number;
   totalRevenueSen: number;
@@ -237,7 +279,7 @@ export function revenueGap(input: RevenueGapInput): RevenueGap {
   const c = input.collections;
   const actualCollectionsSen =
     c.cashSen + c.cardSen + c.transferSen + c.ewalletSen - c.refundsSen;
-  const receivablesAddedSen = c.otaPrepaidSen + c.chargeToAccountSen;
+  const receivablesAddedSen = input.otaReceivableSen + c.chargeToAccountSen;
   const receivablesSettledSen = c.receivablesSettledSen;
   const expectedRevenueSen =
     actualCollectionsSen + receivablesAddedSen - receivablesSettledSen;

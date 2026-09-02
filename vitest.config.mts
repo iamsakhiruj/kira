@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["lib/**/*.test.ts"],
+    // proxy.test.ts is colocated with proxy.ts at the repo root (same
+    // convention as lib/x.ts + lib/x.test.ts), not under lib/.
+    include: ["lib/**/*.test.ts", "proxy.test.ts"],
   },
   resolve: {
     // Mirror tsconfig's "@/*" -> "./*" so tests can import modules that use the

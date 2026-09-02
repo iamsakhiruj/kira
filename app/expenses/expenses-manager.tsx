@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toSen, formatRM } from "@/lib/money";
 import { CAPITAL_OR_OPERATING } from "@/lib/expenses";
+import FormPanel from "@/components/ui/form-panel";
+import DataTable from "@/components/ui/data-table";
 import { addExpense } from "./actions";
 
 interface Option {
@@ -93,8 +95,7 @@ function AddForm({ categories, paymentMethods, currentDate }: {
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-card border p-4" style={fieldStyle}>
-      <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>Add expense</h2>
+    <FormPanel title="Add expense" error={error} animate delayMs={40}>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="flex flex-col gap-1">
           <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Date</span>
@@ -200,19 +201,16 @@ function AddForm({ categories, paymentMethods, currentDate }: {
           />
         </label>
       </div>
-      {error ? (
-        <p style={{ fontSize: "var(--text-label)", color: "var(--warn)" }}>{error}</p>
-      ) : null}
       <button
         type="button"
         disabled={pending}
         onClick={submit}
-        className="h-11 self-start rounded-card px-4 font-medium"
-        style={{ background: "var(--brand)", color: "var(--on-brand)", opacity: pending ? 0.7 : 1 }}
+        className="btn-primary h-11 self-start rounded-card px-4 font-medium"
+        style={{ opacity: pending ? 0.7 : 1 }}
       >
         {pending ? "Adding…" : "Add expense"}
       </button>
-    </div>
+    </FormPanel>
   );
 }
 
@@ -230,42 +228,32 @@ export default function ExpensesManager({
   return (
     <div className="flex flex-col gap-4">
       <AddForm categories={categories} paymentMethods={paymentMethods} currentDate={currentDate} />
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse" style={{ fontSize: "var(--text-label)" }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid var(--border-strong)" }}>
-              <th className="p-2 text-left">Date</th>
-              <th className="p-2 text-left">Category</th>
-              <th className="p-2 text-right">Amount</th>
-              <th className="p-2 text-left">Payment method</th>
-              <th className="p-2 text-left">Paid to</th>
-              <th className="p-2 text-left">Capital / operating</th>
-            </tr>
-          </thead>
-          <tbody>
-            {expenses.length === 0 ? (
-              <tr>
-                <td className="p-2" colSpan={6} style={{ color: "var(--text-muted)" }}>
-                  No expenses recorded yet.
-                </td>
-              </tr>
-            ) : (
-              expenses.map((e) => (
-                <tr key={e.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                  <td className="p-2">{e.date}</td>
-                  <td className="p-2">{e.categoryName}</td>
-                  <td className="p-2 money">{formatRM(e.amountSen)}</td>
-                  <td className="p-2">{e.paymentMethodName}</td>
-                  <td className="p-2">{e.paidTo || "—"}</td>
-                  <td className="p-2" style={{ textTransform: "capitalize" }}>
-                    {e.capitalOrOperating}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        delayMs={80}
+        columns={[
+          { key: "date", header: "Date" },
+          { key: "category", header: "Category" },
+          { key: "amount", header: "Amount", align: "right" },
+          { key: "method", header: "Payment method" },
+          { key: "paidTo", header: "Paid to" },
+          { key: "type", header: "Capital / operating" },
+        ]}
+        isEmpty={expenses.length === 0}
+        emptyMessage="No expenses recorded yet."
+      >
+        {expenses.map((e) => (
+          <tr key={e.id} className="table-row-hover" style={{ borderBottom: "1px solid var(--border)" }}>
+            <td className="px-4 py-3">{e.date}</td>
+            <td className="px-4 py-3">{e.categoryName}</td>
+            <td className="px-4 py-3 money">{formatRM(e.amountSen)}</td>
+            <td className="px-4 py-3">{e.paymentMethodName}</td>
+            <td className="px-4 py-3">{e.paidTo || "—"}</td>
+            <td className="px-4 py-3" style={{ textTransform: "capitalize" }}>
+              {e.capitalOrOperating}
+            </td>
+          </tr>
+        ))}
+      </DataTable>
     </div>
   );
 }

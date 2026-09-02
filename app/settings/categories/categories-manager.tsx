@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Badge from "@/components/ui/badge";
+import FormPanel from "@/components/ui/form-panel";
+import DataTable from "@/components/ui/data-table";
 import { addCategory, editCategory, setCategoryActive } from "./actions";
 
 interface Cat {
@@ -51,7 +54,7 @@ function EditRow({ cat, onDone }: { cat: Cat; onDone: () => void }) {
 
   return (
     <tr style={{ borderBottom: "1px solid var(--border)" }}>
-      <td className="p-2">
+      <td className="px-4 py-3">
         <input
           aria-label="Name"
           className="h-9 rounded border px-2"
@@ -61,7 +64,7 @@ function EditRow({ cat, onDone }: { cat: Cat; onDone: () => void }) {
         />
       </td>
       {cat.type === "expense" ? (
-        <td className="p-2">
+        <td className="px-4 py-3">
           <label className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -72,9 +75,9 @@ function EditRow({ cat, onDone }: { cat: Cat; onDone: () => void }) {
           </label>
         </td>
       ) : (
-        <td className="p-2" />
+        <td className="px-4 py-3" />
       )}
-      <td className="p-2">
+      <td className="px-4 py-3">
         <input
           aria-label="Display order"
           inputMode="numeric"
@@ -84,7 +87,7 @@ function EditRow({ cat, onDone }: { cat: Cat; onDone: () => void }) {
           onChange={(e) => setDisplayOrder(e.target.value.replace(/[^\d-]/g, ""))}
         />
       </td>
-      <td className="p-2" colSpan={2}>
+      <td className="px-4 py-3" colSpan={2}>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -123,28 +126,26 @@ function Row({ cat }: { cat: Cat }) {
   }
 
   return (
-    <tr style={{ borderBottom: "1px solid var(--border)" }}>
-      <td className="p-2" style={{ opacity: cat.active ? 1 : 0.5 }}>
+    <tr className="table-row-hover" style={{ borderBottom: "1px solid var(--border)" }}>
+      <td className="px-4 py-3" style={{ opacity: cat.active ? 1 : 0.5 }}>
         {cat.name}
       </td>
-      <td className="p-2" style={{ opacity: cat.active ? 1 : 0.5 }}>
+      <td className="px-4 py-3" style={{ opacity: cat.active ? 1 : 0.5 }}>
         {cat.type === "expense" && cat.standaloneOnly ? (
           <span style={{ fontSize: "var(--text-caption)", color: "var(--text-muted)" }}>
             Standalone only
           </span>
         ) : null}
       </td>
-      <td className="p-2" style={{ opacity: cat.active ? 1 : 0.5 }}>
+      <td className="px-4 py-3" style={{ opacity: cat.active ? 1 : 0.5 }}>
         {cat.displayOrder}
       </td>
-      <td className="p-2">
-        {cat.active ? (
-          <span style={{ color: "var(--text)" }}>Active</span>
-        ) : (
-          <span style={{ color: "var(--text-faint)" }}>Inactive</span>
-        )}
+      <td className="px-4 py-3">
+        <Badge tone={cat.active ? "neutral" : "muted"}>
+          {cat.active ? "Active" : "Inactive"}
+        </Badge>
       </td>
-      <td className="p-2 text-right">
+      <td className="px-4 py-3 text-right">
         <div className="flex justify-end gap-3">
           <button type="button" onClick={() => setEditing(true)} style={{ color: "var(--brand)" }}>
             Edit
@@ -201,10 +202,7 @@ function AddRow({ type }: { type: "revenue" | "expense" }) {
   }
 
   return (
-    <div className="mt-4 flex flex-col gap-2 rounded-card border p-3" style={fieldStyle}>
-      <h3 style={{ fontSize: "var(--text-label)", fontWeight: 600 }}>
-        Add {type} category
-      </h3>
+    <FormPanel title={`Add ${type} category`} error={error}>
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1">
           <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>
@@ -247,16 +245,13 @@ function AddRow({ type }: { type: "revenue" | "expense" }) {
           type="button"
           disabled={pending}
           onClick={add}
-          className="h-9 rounded-card px-4 font-medium"
-          style={{ background: "var(--brand)", color: "var(--on-brand)", opacity: pending ? 0.7 : 1 }}
+          className="btn-primary h-9 rounded-card px-4 font-medium"
+          style={{ opacity: pending ? 0.7 : 1 }}
         >
           {pending ? "Adding…" : "Add"}
         </button>
       </div>
-      {error ? (
-        <p style={{ fontSize: "var(--text-label)", color: "var(--warn)" }}>{error}</p>
-      ) : null}
-    </div>
+    </FormPanel>
   );
 }
 
@@ -269,24 +264,21 @@ export default function CategoriesManager({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse" style={{ fontSize: "var(--text-label)" }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid var(--border-strong)" }}>
-              <th className="p-2 text-left">Name</th>
-              <th className="p-2 text-left">{type === "expense" ? "Scope" : ""}</th>
-              <th className="p-2 text-left">Order</th>
-              <th className="p-2 text-left">Status</th>
-              <th className="p-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {categories.map((c) => (
-              <Row key={c.id} cat={c} />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={[
+          { key: "name", header: "Name" },
+          { key: "scope", header: type === "expense" ? "Scope" : "" },
+          { key: "order", header: "Order" },
+          { key: "status", header: "Status" },
+          { key: "actions", header: "" },
+        ]}
+        isEmpty={categories.length === 0}
+        emptyMessage={`No ${type} categories yet.`}
+      >
+        {categories.map((c) => (
+          <Row key={c.id} cat={c} />
+        ))}
+      </DataTable>
       <AddRow type={type} />
     </div>
   );

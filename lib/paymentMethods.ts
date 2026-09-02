@@ -31,6 +31,11 @@ export const PaymentMethodSchema = z.object({
   type: z.enum(PAYMENT_METHOD_TYPES),
   active: z.boolean(),
   displayOrder: z.number().int(),
+  // Which accounts balance this method's money lands in — e.g. a DuitNow
+  // collection lands in the bank balance, a cash collection in the drawer.
+  // Nullable: null until linked (Settings > Payment methods), or
+  // deliberately left unlinked for an ambiguous type like "other".
+  accountId: z.string().nullable().default(null),
 });
 
 export type PaymentMethod = z.infer<typeof PaymentMethodSchema>;
@@ -42,7 +47,7 @@ export const PaymentMethodInputSchema = z.object({
   displayOrder: z.number().int(),
 });
 
-export const DEFAULT_PAYMENT_METHODS: Omit<PaymentMethod, "active">[] = [
+export const DEFAULT_PAYMENT_METHODS: Omit<PaymentMethod, "active" | "accountId">[] = [
   { name: "Cash", type: "cash", displayOrder: 0 },
   { name: "Bank transfer", type: "bank_transfer", displayOrder: 1 },
   { name: "DuitNow QR", type: "ewallet", displayOrder: 2 },

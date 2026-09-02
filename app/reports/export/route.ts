@@ -34,15 +34,16 @@ function toNightDayDoc(doc: Record<string, unknown>): NightDayDoc {
     available: 0, sold: 0, houseUse: 0, revenueSen: 0,
   };
   const revenueLines = (doc.revenueLines as NightDayDoc["revenueLines"]) ?? [];
+  const otaBookings = (doc.otaBookings as NightDayDoc["otaBookings"]) ?? [];
   const expenses = (doc.expenses as NightDayDoc["expenses"]) ?? [];
   const collections = (doc.collections as NightDayDoc["collections"]) ?? {
-    cashSen: 0, cardSen: 0, transferSen: 0, ewalletSen: 0, otaPrepaidSen: 0,
+    cashSen: 0, cardSen: 0, transferSen: 0, ewalletSen: 0,
     chargeToAccountSen: 0, depositsSen: 0, refundsSen: 0, receivablesSettledSen: 0,
   };
   const cash = (doc.cash as NightDayDoc["cash"]) ?? {
     openingFloatSen: 0, bankedInSen: 0, countedSen: 0,
   };
-  return { rooms, revenueLines, expenses, collections, cash };
+  return { rooms, revenueLines, otaBookings, expenses, collections, cash };
 }
 
 function toStandaloneEntry(doc: Record<string, unknown>): StandaloneEntry {

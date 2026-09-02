@@ -20,6 +20,7 @@ export const AUDIT_ACTIONS = [
   "void",
   "correct",
   "login",
+  "login_failed",
 ] as const;
 
 export const AuditEntrySchema = z.object({

@@ -1,4 +1,6 @@
-import Link from "next/link";
+import PageHeader from "@/components/ui/page-header";
+import StatTile from "@/components/ui/stat-tile";
+import Card from "@/components/ui/card";
 import { getCurrentUser } from "@/lib/auth";
 import { isAuthorized } from "@/lib/session";
 import { getSettings } from "@/lib/settings";
@@ -13,6 +15,8 @@ import { getRevenueEntriesForMonth } from "@/lib/revenueEntriesStore";
 import { getExpensesForMonth } from "@/lib/expensesStore";
 import { getAllCategories } from "@/lib/categoriesStore";
 import { listPartners, getPartnerBalances } from "@/lib/partnersStore";
+import { ensureAccountsIndexes, ensureAccountsSeeded, getAccountMovementsData } from "@/lib/accountsStore";
+import { currentBalanceSen } from "@/lib/accounts";
 import { formatRM, fromSen } from "@/lib/money";
 import {
   revenueBySource,
@@ -33,16 +37,17 @@ function toNightDayDoc(doc: Record<string, unknown>): NightDayDoc {
     available: 0, sold: 0, houseUse: 0, revenueSen: 0,
   };
   const revenueLines = (doc.revenueLines as NightDayDoc["revenueLines"]) ?? [];
+  const otaBookings = (doc.otaBookings as NightDayDoc["otaBookings"]) ?? [];
   const expenses = (doc.expenses as NightDayDoc["expenses"]) ?? [];
   const collections = (doc.collections as NightDayDoc["collections"]) ?? {
-    cashSen: 0, cardSen: 0, transferSen: 0, ewalletSen: 0, otaPrepaidSen: 0,
+    cashSen: 0, cardSen: 0, transferSen: 0, ewalletSen: 0,
     chargeToAccountSen: 0, depositsSen: 0, refundsSen: 0, receivablesSettledSen: 0,
   };
   const cash = (doc.cash as NightDayDoc["cash"]) ?? {
     openingFloatSen: 0, bankedInSen: 0, countedSen: 0,
   };
   return {
-    rooms, revenueLines, expenses, collections, cash,
+    rooms, revenueLines, otaBookings, expenses, collections, cash,
     varianceSen: typeof doc.varianceSen === "number" ? doc.varianceSen : undefined,
     varianceReason: typeof doc.varianceReason === "string" ? doc.varianceReason : undefined,
     date: typeof doc.date === "string" ? doc.date : undefined,
@@ -62,55 +67,6 @@ function prevMonthStr(current: string): string {
   const [y, m] = current.slice(0, 7).split("-").map(Number);
   const d = new Date(y, m - 2, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function Stat({
-  label,
-  value,
-  unavailableMessage,
-  href,
-  delta,
-}: {
-  label: string;
-  value?: string;
-  unavailableMessage?: string;
-  href?: string;
-  delta?: string;
-}) {
-  const body = (
-    <div
-      className="flex min-w-0 flex-col gap-1 rounded-card border p-4"
-      style={{ background: "var(--surface)", borderColor: "var(--border)" }}
-    >
-      <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>
-        {label}
-      </span>
-      {unavailableMessage ? (
-        <span style={{ fontSize: "var(--text-body)", color: "var(--text-faint)" }}>
-          {unavailableMessage}
-        </span>
-      ) : (
-        <span
-          className="money break-all"
-          style={{ fontSize: "var(--text-hero-money)", fontWeight: 600 }}
-        >
-          {value}
-        </span>
-      )}
-      {delta ? (
-        <span style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}>
-          {delta}
-        </span>
-      ) : null}
-    </div>
-  );
-  return href ? (
-    <Link href={href} className="block min-w-0">
-      {body}
-    </Link>
-  ) : (
-    <div className="min-w-0">{body}</div>
-  );
 }
 
 function deltaLabel(current: number, previous: number): string {
@@ -161,6 +117,9 @@ export default async function DashboardPage() {
   };
   let partnerEntries: PartnerEntry[] = [];
   let occResult: ReturnType<typeof occupancy> | null = null;
+
+  type AccountBalance = { id: string; name: string; balanceSen: number };
+  let accountBalances: AccountBalance[] = [];
 
   if (showFinancials) {
     const [
@@ -228,6 +187,23 @@ export default async function DashboardPage() {
       occResult = occupancy(nightDays, settings.roomsAvailable);
     }
 
+    // Account balances — current balance per account, as of today.
+    await ensureAccountsIndexes();
+    await ensureAccountsSeeded(current);
+    const { accounts: allAccounts, movements: acctMovements } = await getAccountMovementsData(
+      current,
+      { includePartnerMovement: isOwner },
+    );
+    accountBalances = allAccounts.map((a) => ({
+      id: a._id.toString(),
+      name: a.name,
+      balanceSen: currentBalanceSen(
+        { id: a._id.toString(), openingBalanceSen: a.openingBalanceSen, openingDate: a.openingDate },
+        acctMovements,
+        current,
+      ),
+    }));
+
     // Partners (owner only)
     if (showPartnerStrip) {
       const [partners, balancesMap] = await Promise.all([listPartners(), getPartnerBalances()]);
@@ -251,15 +227,11 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
-      <div>
-        <h1 style={{ fontSize: "var(--text-page-title)", fontWeight: 600 }}>
-          Dashboard
-        </h1>
-        <p style={{ color: "var(--text-muted)" }}>
-          Figures below show as soon as there&apos;s data to report — no
-          placeholder numbers.
-        </p>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        description="Figures below show as soon as there's data to report — no placeholder numbers."
+        animate
+      />
 
       {/* Top row — this month's financials */}
       {showFinancials ? (
@@ -267,31 +239,40 @@ export default async function DashboardPage() {
           className={`grid min-w-0 grid-cols-1 gap-3 ${isOwner ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}
         >
           {hasThisMonthData ? (
-            <Stat
+            <StatTile
+              animate
               label="Revenue (this month)"
-              value={`RM ${fromSen(revThisMonthSen)}`}
+              value={revThisMonthSen}
+              tone="revenue"
+              delayMs={0}
               delta={deltaLabel(revThisMonthSen, revLastMonthSen)}
             />
           ) : (
-            <Stat label="Revenue (this month)" unavailableMessage="No data yet" />
+            <StatTile animate label="Revenue (this month)" unavailableMessage="No data yet" tone="revenue" delayMs={0} />
           )}
           {hasThisMonthData ? (
-            <Stat
+            <StatTile
+              animate
               label="Expenses (this month)"
-              value={`RM ${fromSen(expThisMonthSen)}`}
+              value={expThisMonthSen}
+              tone="expense"
+              delayMs={40}
               delta={deltaLabel(expThisMonthSen, expLastMonthSen)}
             />
           ) : (
-            <Stat label="Expenses (this month)" unavailableMessage="No data yet" />
+            <StatTile animate label="Expenses (this month)" unavailableMessage="No data yet" tone="expense" delayMs={40} />
           )}
           {isOwner && profitThisMonthSen !== null ? (
             hasThisMonthData ? (
-              <Stat
+              <StatTile
+              animate
                 label="Net profit (this month)"
-                value={`${profitThisMonthSen < 0 ? "−" : ""}RM ${fromSen(Math.abs(profitThisMonthSen))}`}
+                value={profitThisMonthSen}
+                tone="brand"
+                delayMs={80}
               />
             ) : (
-              <Stat label="Net profit (this month)" unavailableMessage="No data yet" />
+              <StatTile animate label="Net profit (this month)" unavailableMessage="No data yet" tone="brand" delayMs={80} />
             )
           ) : null}
         </div>
@@ -299,22 +280,30 @@ export default async function DashboardPage() {
 
       {/* Second row — approvals and missing reports (real data, keep exactly as-is) */}
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
-        <Stat
+        <StatTile
+              animate
           label="Days awaiting approval"
-          value={String(pending.length)}
+          value={pending.length}
+          variant="int"
           href="/reception"
+          delayMs={0}
         />
         {earliestDate === null ? (
-          <Stat
+          <StatTile
+              animate
             label="Missing night reports"
             unavailableMessage="No reports yet"
             href="/reception"
+            delayMs={40}
           />
         ) : (
-          <Stat
+          <StatTile
+              animate
             label="Missing night reports"
-            value={String(missingCount)}
+            value={missingCount}
+            variant="int"
             href="/reception"
+            delayMs={40}
           />
         )}
       </div>
@@ -323,48 +312,61 @@ export default async function DashboardPage() {
       {showFinancials ? (
         <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
           {cashInHandSen !== null ? (
-            <Stat
+            <StatTile
+              animate
               label="Cash in hand (front desk)"
-              value={`RM ${fromSen(cashInHandSen)}`}
+              value={cashInHandSen}
+              delayMs={0}
             />
           ) : (
-            <Stat label="Cash in hand (front desk)" unavailableMessage="No data yet" />
+            <StatTile animate label="Cash in hand (front desk)" unavailableMessage="No data yet" delayMs={0} />
           )}
           {hasThisMonthData ? (
-            <div
-              className="flex min-w-0 flex-col gap-1 rounded-card border p-4"
-              style={{
-                background: "var(--surface)",
-                borderColor: "var(--border)",
-              }}
-            >
-              <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>
-                Cash variance (month to date)
-              </span>
-              <span
-                className="money break-all"
-                style={{
-                  fontSize: "var(--text-hero-money)",
-                  fontWeight: 600,
-                  color: varianceOverThreshold ? "var(--warn)" : undefined,
-                }}
-              >
-                {cashVarianceMtdSen < 0 ? "−" : ""}RM {fromSen(Math.abs(cashVarianceMtdSen))}
-              </span>
-            </div>
+            <StatTile
+              animate
+              label="Cash variance (month to date)"
+              value={cashVarianceMtdSen}
+              warn={varianceOverThreshold}
+              delayMs={40}
+            />
           ) : (
-            <Stat label="Cash variance (month to date)" unavailableMessage="No data yet" />
+            <StatTile animate label="Cash variance (month to date)" unavailableMessage="No data yet" delayMs={40} />
           )}
+        </div>
+      ) : null}
+
+      {/* Account balances — compact, current balance per account */}
+      {showFinancials && accountBalances.length > 0 ? (
+        <div
+          className={`grid min-w-0 grid-cols-1 gap-3 ${
+            accountBalances.length >= 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"
+          }`}
+        >
+          {accountBalances.map((a, i) => (
+            <StatTile
+              key={a.id}
+              animate
+              label={a.name}
+              value={a.balanceSen}
+              delayMs={i * 40}
+            />
+          ))}
         </div>
       ) : null}
 
       {/* Occupancy row (manager+, only if roomsAvailable set) */}
       {showFinancials && occResult !== null && occResult.availableTotal > 0 ? (
         <div className="grid min-w-0 grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat label="Occupancy" value={`${Math.round(occResult.occupancyRatio * 100)}%`} />
-          <Stat label="Rooms sold" value={String(occResult.soldTotal)} />
-          <Stat label="ADR" value={`RM ${fromSen(occResult.adrSen)}`} />
-          <Stat label="RevPAR" value={`RM ${fromSen(occResult.revparSen)}`} />
+          <StatTile
+              animate
+            label="Occupancy"
+            value={Math.round(occResult.occupancyRatio * 100)}
+            variant="percent"
+            delayMs={0}
+          />
+          <StatTile animate label="Rooms sold" value={occResult.soldTotal} variant="int" delayMs={40} />
+          <StatTile animate label="ADR" value={occResult.adrSen} delayMs={80} />
+          <StatTile animate label="RevPAR" value={occResult.revparSen} delayMs={120} />
         </div>
       ) : null}
 
@@ -388,11 +390,13 @@ export default async function DashboardPage() {
             <p style={{ color: "var(--text-faint)" }}>No partner records yet.</p>
           ) : (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {partnerEntries.map((p) => (
-                <div
+              {partnerEntries.map((p, i) => (
+                <Card
                   key={p.id}
-                  className="flex flex-col gap-2 rounded-card border p-4"
-                  style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+                  tone="neutral"
+                  animate
+                  delayMs={i * 40}
+                  className="flex flex-col gap-2 p-4"
                 >
                   <h3
                     style={{ fontSize: "var(--text-label)", fontWeight: 600 }}
@@ -416,7 +420,7 @@ export default async function DashboardPage() {
                       {formatRM(Math.abs(p.balanceSen))}
                     </span>
                   </div>
-                </div>
+                </Card>
               ))}
             </div>
           )}

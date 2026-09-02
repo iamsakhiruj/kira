@@ -27,7 +27,6 @@ function makeDay(overrides: Partial<NightDayDoc> = {}): NightDayDoc {
       cardSen: 0,
       transferSen: 0,
       ewalletSen: 0,
-      otaPrepaidSen: 0,
       chargeToAccountSen: 0,
       depositsSen: 0,
       refundsSen: 0,
@@ -195,7 +194,6 @@ describe("cashMovement", () => {
           cardSen: 5000,
           transferSen: 0,
           ewalletSen: 0,
-          otaPrepaidSen: 0,
           chargeToAccountSen: 0,
           depositsSen: 0,
           refundsSen: 0,
@@ -221,7 +219,7 @@ describe("cashMovement", () => {
   });
 
   it("handles negative closing (more drawn than collected)", () => {
-    const days = [makeDay({ collections: { cashSen: 1000, cardSen: 0, transferSen: 0, ewalletSen: 0, otaPrepaidSen: 0, chargeToAccountSen: 0, depositsSen: 0, refundsSen: 0, receivablesSettledSen: 0 }, expenses: [] })];
+    const days = [makeDay({ collections: { cashSen: 1000, cardSen: 0, transferSen: 0, ewalletSen: 0, chargeToAccountSen: 0, depositsSen: 0, refundsSen: 0, receivablesSettledSen: 0 }, expenses: [] })];
     const result = cashMovement({
       openingFloatSen: 0,
       nightDays: days,
@@ -255,7 +253,6 @@ describe("collectionsByChannel", () => {
           cardSen: 5000,
           transferSen: 0,
           ewalletSen: 3000,
-          otaPrepaidSen: 2000,
           chargeToAccountSen: 1000,
           depositsSen: 0,
           refundsSen: 0,
@@ -268,9 +265,41 @@ describe("collectionsByChannel", () => {
     expect(byChannel.get("Cash")).toBe(10000);
     expect(byChannel.get("Card")).toBe(5000);
     expect(byChannel.get("E-wallet")).toBe(3000);
-    expect(byChannel.get("OTA prepaid")).toBe(2000);
     expect(byChannel.get("Charge to account")).toBe(1000);
     expect(byChannel.has("Bank transfer")).toBe(false); // zero filtered out
+  });
+
+  it("buckets a legacy otaPrepaidSen field (pre-OTA-platforms documents)", () => {
+    const days = [
+      makeDay({
+        collections: {
+          cashSen: 0,
+          cardSen: 0,
+          transferSen: 0,
+          ewalletSen: 0,
+          chargeToAccountSen: 0,
+          depositsSen: 0,
+          refundsSen: 0,
+          receivablesSettledSen: 0,
+          otaPrepaidSen: 2000,
+        },
+      }),
+    ];
+    const result = collectionsByChannel(days, [], new Map());
+    const byChannel = new Map(result.map((c) => [c.channel, c.amountSen]));
+    expect(byChannel.get("OTA prepaid (legacy)")).toBe(2000);
+  });
+
+  it("does not bucket otaBookings — a guest-paid-platform line is a receivable, not a collection", () => {
+    const days = [
+      makeDay({
+        otaBookings: [
+          { platformId: "agoda", bookingsCount: 1, roomRevenueSen: 15000, guestPaidPlatform: true },
+        ],
+      }),
+    ];
+    const result = collectionsByChannel(days, [], new Map());
+    expect(result.some((c) => c.channel.startsWith("OTA"))).toBe(false);
   });
 
   it("merges overlapping channels from night + standalone", () => {
@@ -281,7 +310,6 @@ describe("collectionsByChannel", () => {
           cardSen: 0,
           transferSen: 0,
           ewalletSen: 0,
-          otaPrepaidSen: 0,
           chargeToAccountSen: 0,
           depositsSen: 0,
           refundsSen: 0,
@@ -320,7 +348,6 @@ describe("collectionsByChannel", () => {
           cardSen: 5000,
           transferSen: 300,
           ewalletSen: 0,
-          otaPrepaidSen: 0,
           chargeToAccountSen: 0,
           depositsSen: 0,
           refundsSen: 0,

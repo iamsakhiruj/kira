@@ -2,8 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { formatRM } from "@/lib/money";
+import { ORDINARY_RATE_DIVISOR } from "@/lib/salary";
 import { getSalaryPayment } from "@/lib/salaryStore";
 import { getPaymentMethods } from "@/lib/paymentMethodsStore";
+import Badge from "@/components/ui/badge";
+import Card from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
 
@@ -60,9 +63,13 @@ export default async function PayslipPage({
     ? (methods.find((m) => m._id.toString() === p.paymentMethodId)?.name ?? "—")
     : "—";
 
+  // Same fix as the run list: the unpaid-absence deduction always uses the
+  // fixed Employment Act s.60I ordinary-rate divisor (26), never
+  // workingDaysInMonth — pairing the two implied a divisor that was never
+  // actually used.
   const basis =
     p.payType === "monthly"
-      ? `Monthly-rated · ${p.unpaidAbsenceDays} unpaid absence day${p.unpaidAbsenceDays === 1 ? "" : "s"} of ${p.workingDaysInMonth} working days`
+      ? `Monthly-rated · ${p.unpaidAbsenceDays} unpaid absence day${p.unpaidAbsenceDays === 1 ? "" : "s"} at 1/${ORDINARY_RATE_DIVISOR} ordinary rate of pay`
       : `Daily-rated · ${p.presentDays} day${p.presentDays === 1 ? "" : "s"} present`;
 
   return (
@@ -71,16 +78,9 @@ export default async function PayslipPage({
         <Link href={`/salary?month=${p.month}`} style={{ color: "var(--brand)" }}>
           ← Back to {p.month}
         </Link>
-        <span
-          className="rounded px-2 py-0.5"
-          style={{
-            fontSize: "var(--text-caption)",
-            color: p.status === "paid" ? "var(--text)" : "var(--text-muted)",
-            border: "1px solid var(--border-strong)",
-          }}
-        >
+        <Badge tone={p.status === "paid" ? "neutral" : "muted"}>
           {p.status === "paid" ? "Paid" : "Draft"}
-        </span>
+        </Badge>
       </div>
 
       <div>
@@ -109,7 +109,7 @@ export default async function PayslipPage({
         ) : null}
       </div>
 
-      <section className="rounded-card border p-4" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+      <Card tone="neutral" animate delayMs={0} className="p-4">
         <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>Earnings</h2>
         <Line
           label={p.payType === "monthly" ? "Basic (full monthly)" : "Basic (rate × days present)"}
@@ -117,9 +117,9 @@ export default async function PayslipPage({
         />
         <Line label="Fixed allowances" amountSen={p.allowancesSen} />
         <Line label="Gross" amountSen={p.grossSen} strong />
-      </section>
+      </Card>
 
-      <section className="rounded-card border p-4" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
+      <Card tone="expense" animate delayMs={40} className="p-4">
         <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>Deductions</h2>
         <Line label="Unpaid absence" amountSen={p.unpaidAbsenceDeductionSen} tone="out" />
         <Line label="Advance repayment" amountSen={p.advanceRepaymentSen} tone="out" />
@@ -136,9 +136,9 @@ export default async function PayslipPage({
           tone="out"
         />
         <Line label="Total deductions" amountSen={p.totalDeductionsSen} strong tone="out" />
-      </section>
+      </Card>
 
-      <section className="rounded-card border p-4" style={{ borderColor: "var(--border-strong)", background: "var(--surface)" }}>
+      <Card tone="brand" animate delayMs={80} className="p-4">
         <Line label="Net pay" amountSen={p.netSen} strong tone="net" />
         {p.netSen < 0 ? (
           <p style={{ fontSize: "var(--text-label)", color: "var(--warn)" }}>
@@ -150,7 +150,7 @@ export default async function PayslipPage({
             ? `Paid ${p.paidDate} via ${methodName}.`
             : `Payment method: ${methodName}. Not yet paid.`}
         </p>
-      </section>
+      </Card>
     </div>
   );
 }

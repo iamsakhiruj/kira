@@ -11,6 +11,7 @@ import {
   getPaymentMethods,
 } from "@/lib/paymentMethodsStore";
 import { ensureExpensesIndexes, getRecentExpenses } from "@/lib/expensesStore";
+import PageHeader from "@/components/ui/page-header";
 import ExpensesManager from "./expenses-manager";
 
 // Depends on request-time data; never prerender.
@@ -40,15 +41,11 @@ export default async function ExpensesPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div>
-        <h1 style={{ fontSize: "var(--text-page-title)", fontWeight: 600 }}>
-          Expenses
-        </h1>
-        <p style={{ color: "var(--text-muted)" }}>
-          Everything reception never touches — salaries, rent, utilities,
-          supplier invoices paid outside the front desk.
-        </p>
-      </div>
+      <PageHeader
+        title="Expenses"
+        description="Everything reception never touches — salaries, rent, utilities, supplier invoices paid outside the front desk."
+        animate
+      />
       <ExpensesManager
         currentDate={currentDate}
         categories={categories.map((c) => ({ id: c._id.toString(), name: c.name }))}

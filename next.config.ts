@@ -11,6 +11,8 @@ const nextConfig: NextConfig = {
   // reception-flow testing (see CLAUDE.md: "night report ... filled in on a
   // phone at 1am").
   allowedDevOrigins: ["192.168.1.77"],
+  // Hide the dev-mode build-activity indicator overlay.
+  devIndicators: false,
 };
 
 export default nextConfig;

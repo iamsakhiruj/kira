@@ -17,6 +17,9 @@ import {
   isSelfApproved,
 } from "@/lib/nightReport";
 import { getOpenCorrectionRequests } from "@/lib/correctionRequestsStore";
+import Badge from "@/components/ui/badge";
+import Card from "@/components/ui/card";
+import DataTable from "@/components/ui/data-table";
 import ApproveButton from "./approve-button";
 import ResolveCorrectionButton from "./resolve-correction-button";
 
@@ -59,32 +62,17 @@ function SubmittedCell({
   thresholdHours: number;
 }) {
   if (!submittedAt) {
-    return <td className="p-2" style={{ color: "var(--text-faint)" }}>—</td>;
+    return <td className="px-4 py-3" style={{ color: "var(--text-faint)" }}>—</td>;
   }
   const hours = submissionLatenessHours(date, submittedAt, cutoffHour);
   const late = isLateSubmission(date, submittedAt, thresholdHours, cutoffHour);
   return (
     <td
-      className="p-2"
+      className="px-4 py-3"
       style={{ color: late ? "var(--warn)" : "var(--text-muted)" }}
     >
       {formatLateness(hours)}
     </td>
-  );
-}
-
-function Badge({ children }: { children: React.ReactNode }) {
-  return (
-    <span
-      className="ml-2 rounded px-2 py-0.5"
-      style={{
-        fontSize: "var(--text-caption)",
-        color: "var(--warn)",
-        background: "var(--warn-bg)",
-      }}
-    >
-      {children}
-    </span>
   );
 }
 
@@ -123,91 +111,87 @@ export default async function ApprovalQueue() {
         <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>
           Pending approval{pending.length ? ` (${pending.length})` : ""}
         </h2>
-        {pending.length === 0 ? (
-          <p style={{ color: "var(--text-muted)" }}>Nothing waiting on you.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table
-              className="w-full border-collapse"
-              style={{ fontSize: "var(--text-label)" }}
-            >
-              <thead>
-                <tr style={{ borderBottom: "1px solid var(--border-strong)" }}>
-                  <th className="p-2 text-left">Date</th>
-                  <th className="p-2 text-left">Submitted by</th>
-                  <th className="p-2 text-left">Submitted</th>
-                  <th className="p-2 text-right">Revenue</th>
-                  <th className="p-2 text-right">Variance</th>
-                  <th className="p-2 text-right">Revenue gap</th>
-                  <th className="p-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {pending.map((d: WithId<Document>) => {
-                  const revenue = totalRevenueSen(
-                    d.rooms?.revenueSen ?? 0,
-                    d.revenueLines ?? [],
-                  );
-                  const varianceSen = d.cash?.varianceSen ?? 0;
-                  const gapSen = d.revenueGapSen ?? 0;
-                  const varOut = requiresVarianceReason(
-                    varianceSen,
-                    settings.varianceThresholdSen,
-                  );
-                  const gapOut = requiresVarianceReason(
-                    gapSen,
-                    settings.revenueGapThresholdSen,
-                  );
-                  return (
-                    <tr
-                      key={String(d._id)}
-                      style={{ borderBottom: "1px solid var(--border)" }}
+        <DataTable
+          animate
+          columns={[
+            { key: "date", header: "Date" },
+            { key: "submittedBy", header: "Submitted by" },
+            { key: "submitted", header: "Submitted" },
+            { key: "revenue", header: "Revenue", align: "right" },
+            { key: "variance", header: "Variance", align: "right" },
+            { key: "gap", header: "Revenue gap", align: "right" },
+            { key: "actions", header: "" },
+          ]}
+          isEmpty={pending.length === 0}
+          emptyMessage="Nothing waiting on you."
+        >
+          {pending.map((d: WithId<Document>) => {
+            const revenue = totalRevenueSen(
+              d.rooms?.revenueSen ?? 0,
+              d.revenueLines ?? [],
+            );
+            const varianceSen = d.cash?.varianceSen ?? 0;
+            const gapSen = d.revenueGapSen ?? 0;
+            const varOut = requiresVarianceReason(
+              varianceSen,
+              settings.varianceThresholdSen,
+            );
+            const gapOut = requiresVarianceReason(
+              gapSen,
+              settings.revenueGapThresholdSen,
+            );
+            return (
+              <tr
+                key={String(d._id)}
+                className="table-row-hover"
+                style={{ borderBottom: "1px solid var(--border)" }}
+              >
+                <td className="px-4 py-3">
+                  {String(d.date)}
+                  {d.enteredLate ? (
+                    <Badge tone="warn" className="ml-2">Backdated</Badge>
+                  ) : null}
+                  {d.editedBy ? (
+                    <Badge tone="warn" className="ml-2">Edited</Badge>
+                  ) : null}
+                </td>
+                <td className="px-4 py-3">{nameOf(d.submittedBy)}</td>
+                <SubmittedCell
+                  date={String(d.date)}
+                  submittedAt={submittedAtOf(d)}
+                  cutoffHour={settings.cutoffHour}
+                  thresholdHours={settings.lateSubmissionThresholdHours}
+                />
+                <td className="px-4 py-3 money text-right">{formatRM(revenue)}</td>
+                <td
+                  className="px-4 py-3 money text-right"
+                  style={varOut ? { color: "var(--warn)" } : undefined}
+                >
+                  {formatRM(varianceSen)}
+                </td>
+                <td
+                  className="px-4 py-3 money text-right"
+                  style={gapOut ? { color: "var(--warn)" } : undefined}
+                >
+                  {formatRM(gapSen)}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <div className="flex items-center justify-end gap-3">
+                    {/* Owner/manager may fix a mistake before approving —
+                        only while submitted; approved days lock. */}
+                    <Link
+                      href={`/reception/edit/${String(d._id)}`}
+                      style={{ color: "var(--brand)", fontSize: "var(--text-label)" }}
                     >
-                      <td className="p-2">
-                        {String(d.date)}
-                        {d.enteredLate ? <Badge>Backdated</Badge> : null}
-                        {d.editedBy ? <Badge>Edited</Badge> : null}
-                      </td>
-                      <td className="p-2">{nameOf(d.submittedBy)}</td>
-                      <SubmittedCell
-                        date={String(d.date)}
-                        submittedAt={submittedAtOf(d)}
-                        cutoffHour={settings.cutoffHour}
-                        thresholdHours={settings.lateSubmissionThresholdHours}
-                      />
-                      <td className="p-2 money">{formatRM(revenue)}</td>
-                      <td
-                        className="p-2 money"
-                        style={varOut ? { color: "var(--warn)" } : undefined}
-                      >
-                        {formatRM(varianceSen)}
-                      </td>
-                      <td
-                        className="p-2 money"
-                        style={gapOut ? { color: "var(--warn)" } : undefined}
-                      >
-                        {formatRM(gapSen)}
-                      </td>
-                      <td className="p-2 text-right">
-                        <div className="flex items-center justify-end gap-3">
-                          {/* Owner/manager may fix a mistake before approving —
-                              only while submitted; approved days lock. */}
-                          <Link
-                            href={`/reception/edit/${String(d._id)}`}
-                            style={{ color: "var(--brand)", fontSize: "var(--text-label)" }}
-                          >
-                            Edit
-                          </Link>
-                          <ApproveButton businessDayId={String(d._id)} />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+                      Edit
+                    </Link>
+                    <ApproveButton businessDayId={String(d._id)} />
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </DataTable>
       </section>
 
       <section className="flex flex-col gap-3">
@@ -219,15 +203,14 @@ export default async function ApprovalQueue() {
           <p style={{ color: "var(--text-muted)" }}>No open correction requests.</p>
         ) : (
           <div className="flex flex-col gap-4">
-            {openCorrections.map((c) => (
-              <div
+            {openCorrections.map((c, i) => (
+              <Card
                 key={String(c._id)}
-                className="rounded-card border p-4 flex flex-col gap-3"
-                style={{
-                  background: "var(--surface)",
-                  borderColor: "var(--border)",
-                  fontSize: "var(--text-label)",
-                }}
+                tone="neutral"
+                animate
+                delayMs={i * 40}
+                className="flex flex-col gap-3 p-4"
+                style={{ fontSize: "var(--text-label)" }}
               >
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="flex flex-col gap-1">
@@ -236,17 +219,7 @@ export default async function ApprovalQueue() {
                       Requested by {nameOf(c.requestedBy)}
                     </span>
                   </div>
-                  <span
-                    className="rounded px-2 py-0.5"
-                    style={{
-                      fontSize: "var(--text-caption)",
-                      color: "var(--warn)",
-                      background: "var(--warn-bg)",
-                      border: "1px solid var(--warn)",
-                    }}
-                  >
-                    open
-                  </span>
+                  <Badge tone="warn">open</Badge>
                 </div>
                 <div className="flex flex-col gap-1">
                   <p>
@@ -267,7 +240,7 @@ export default async function ApprovalQueue() {
                   </p>
                 </div>
                 <ResolveCorrectionButton correctionId={String(c._id)} />
-              </div>
+              </Card>
             ))}
           </div>
         )}
@@ -277,56 +250,52 @@ export default async function ApprovalQueue() {
         <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>
           Recently approved
         </h2>
-        {approved.length === 0 ? (
-          <p style={{ color: "var(--text-muted)" }}>Nothing approved yet.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table
-              className="w-full border-collapse"
-              style={{ fontSize: "var(--text-label)" }}
-            >
-              <thead>
-                <tr style={{ borderBottom: "1px solid var(--border-strong)" }}>
-                  <th className="p-2 text-left">Date</th>
-                  <th className="p-2 text-left">Submitted by</th>
-                  <th className="p-2 text-left">Submitted</th>
-                  <th className="p-2 text-left">Approved by</th>
-                  <th className="p-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {approved.map((d: WithId<Document>) => {
-                  const submittedBy = d.submittedBy ? String(d.submittedBy) : "";
-                  const approvedBy = d.approvedBy ? String(d.approvedBy) : null;
-                  const self = isSelfApproved(submittedBy, approvedBy);
-                  return (
-                    <tr
-                      key={String(d._id)}
-                      style={{ borderBottom: "1px solid var(--border)" }}
-                    >
-                      <td className="p-2">
-                        {String(d.date)}
-                        {d.enteredLate ? <Badge>Backdated</Badge> : null}
-                        {d.editedBy ? <Badge>Edited</Badge> : null}
-                      </td>
-                      <td className="p-2">{nameOf(d.submittedBy)}</td>
-                      <SubmittedCell
-                        date={String(d.date)}
-                        submittedAt={submittedAtOf(d)}
-                        cutoffHour={settings.cutoffHour}
-                        thresholdHours={settings.lateSubmissionThresholdHours}
-                      />
-                      <td className="p-2">{nameOf(d.approvedBy)}</td>
-                      <td className="p-2">
-                        {self ? <Badge>Self-approved</Badge> : null}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <DataTable
+          animate
+          columns={[
+            { key: "date", header: "Date" },
+            { key: "submittedBy", header: "Submitted by" },
+            { key: "submitted", header: "Submitted" },
+            { key: "approvedBy", header: "Approved by" },
+            { key: "flags", header: "" },
+          ]}
+          isEmpty={approved.length === 0}
+          emptyMessage="Nothing approved yet."
+        >
+          {approved.map((d: WithId<Document>) => {
+            const submittedBy = d.submittedBy ? String(d.submittedBy) : "";
+            const approvedBy = d.approvedBy ? String(d.approvedBy) : null;
+            const self = isSelfApproved(submittedBy, approvedBy);
+            return (
+              <tr
+                key={String(d._id)}
+                className="table-row-hover"
+                style={{ borderBottom: "1px solid var(--border)" }}
+              >
+                <td className="px-4 py-3">
+                  {String(d.date)}
+                  {d.enteredLate ? (
+                    <Badge tone="warn" className="ml-2">Backdated</Badge>
+                  ) : null}
+                  {d.editedBy ? (
+                    <Badge tone="warn" className="ml-2">Edited</Badge>
+                  ) : null}
+                </td>
+                <td className="px-4 py-3">{nameOf(d.submittedBy)}</td>
+                <SubmittedCell
+                  date={String(d.date)}
+                  submittedAt={submittedAtOf(d)}
+                  cutoffHour={settings.cutoffHour}
+                  thresholdHours={settings.lateSubmissionThresholdHours}
+                />
+                <td className="px-4 py-3">{nameOf(d.approvedBy)}</td>
+                <td className="px-4 py-3">
+                  {self ? <Badge tone="warn">Self-approved</Badge> : null}
+                </td>
+              </tr>
+            );
+          })}
+        </DataTable>
       </section>
     </div>
   );

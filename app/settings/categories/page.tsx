@@ -3,6 +3,7 @@ import {
   ensureCategoriesSeeded,
   getAllCategories,
 } from "@/lib/categoriesStore";
+import PageHeader from "@/components/ui/page-header";
 import CategoriesManager from "./categories-manager";
 
 // Reads the current lists on every request; cheap, and avoids a stale list
@@ -28,18 +29,19 @@ export default async function CategoriesPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <h1 style={{ fontSize: "var(--text-page-title)", fontWeight: 600 }}>
-          Categories
-        </h1>
-        <p style={{ color: "var(--text-muted)" }}>
-          Used on the night report and on the standalone revenue/expense
-          screens. Deactivate a category instead of deleting it — anything
-          already recorded against it keeps working. &ldquo;Standalone
-          only&rdquo; expense categories (rent, salaries, and the like) never
-          appear on the night report&apos;s own picker.
-        </p>
-      </div>
+      <PageHeader
+        title="Categories"
+        description={
+          <>
+            Used on the night report and on the standalone revenue/expense
+            screens. Deactivate a category instead of deleting it — anything
+            already recorded against it keeps working. &ldquo;Standalone
+            only&rdquo; expense categories (rent, salaries, and the like) never
+            appear on the night report&apos;s own picker.
+          </>
+        }
+        animate
+      />
       <section className="flex flex-col gap-3">
         <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>
           Revenue categories

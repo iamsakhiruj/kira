@@ -46,7 +46,7 @@ export async function createPaymentMethod(
   input: z.infer<typeof PaymentMethodInputSchema>,
   actor: { id: string; role: Role },
 ): Promise<ObjectId> {
-  const doc: PaymentMethod = { ...input, active: true };
+  const doc: PaymentMethod = { ...input, active: true, accountId: null };
   const col = await collection();
   const res = await col.insertOne(doc);
 

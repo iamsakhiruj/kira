@@ -5,6 +5,7 @@ import {
   getEmployeesManagerView,
   getEmployeesFull,
 } from "@/lib/employeesStore";
+import PageHeader from "@/components/ui/page-header";
 import EmployeesManager from "./employees-manager";
 
 // Depends on request-time data; never prerender.
@@ -58,30 +59,29 @@ export default async function EmployeesPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 style={{ fontSize: "var(--text-page-title)", fontWeight: 600 }}>
-            Employees
-          </h1>
-          <p style={{ color: "var(--text-muted)" }}>
-            {user.role === "owner"
-              ? "Full records — pay, bank details and compliance data included."
-              : "Names, positions and contact details. Pay and compliance data are owner-only."}
-          </p>
-        </div>
-        <Link
-          href="/employees/attendance"
-          className="h-11 self-start rounded-card border px-4"
-          style={{
-            borderColor: "var(--border-strong)",
-            color: "var(--brand)",
-            display: "flex",
-            alignItems: "center",
-          }}
-        >
-          Attendance
-        </Link>
-      </div>
+      <PageHeader
+        title="Employees"
+        description={
+          user.role === "owner"
+            ? "Full records — pay, bank details and compliance data included."
+            : "Names, positions and contact details. Pay and compliance data are owner-only."
+        }
+        action={
+          <Link
+            href="/employees/attendance"
+            className="h-11 self-start rounded-card border px-4"
+            style={{
+              borderColor: "var(--border-strong)",
+              color: "var(--brand)",
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            Attendance
+          </Link>
+        }
+        animate
+      />
       <EmployeesManager role={user.role === "owner" ? "owner" : "manager"} employees={employees} />
     </div>
   );

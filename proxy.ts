@@ -32,6 +32,8 @@ export const ROUTE_REQUIREMENTS: RouteRequirement[] = [
   { prefix: "/dashboard", required: "manager" },
   { prefix: "/revenue", required: "manager" },
   { prefix: "/expenses", required: "manager" },
+  { prefix: "/ota", required: "manager" },
+  { prefix: "/accounts", required: "manager" },
   { prefix: "/employees", required: "manager" },
   { prefix: "/reports" },
   { prefix: "/salary", required: "owner" },
@@ -39,6 +41,8 @@ export const ROUTE_REQUIREMENTS: RouteRequirement[] = [
   { prefix: "/profit", required: "owner" },
   { prefix: "/settings/categories", required: "manager" },
   { prefix: "/settings/payment-methods", required: "manager" },
+  { prefix: "/settings/ota-platforms", required: "manager" },
+  { prefix: "/settings/accounts", required: "owner" },
   { prefix: "/settings/users", required: "owner" },
 ];
 
@@ -75,6 +79,8 @@ export const config = {
     "/dashboard/:path*",
     "/revenue/:path*",
     "/expenses/:path*",
+    "/ota/:path*",
+    "/accounts/:path*",
     "/employees/:path*",
     "/reports/:path*",
     "/salary/:path*",

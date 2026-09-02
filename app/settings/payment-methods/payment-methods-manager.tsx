@@ -3,10 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PAYMENT_METHOD_TYPES } from "@/lib/paymentMethods";
+import Badge from "@/components/ui/badge";
+import FormPanel from "@/components/ui/form-panel";
+import DataTable from "@/components/ui/data-table";
 import {
   addPaymentMethod,
   editPaymentMethod,
   setPaymentMethodActive,
+  setPaymentMethodAccount,
 } from "./actions";
 
 interface Method {
@@ -15,6 +19,13 @@ interface Method {
   type: (typeof PAYMENT_METHOD_TYPES)[number];
   active: boolean;
   displayOrder: number;
+  accountId: string | null;
+}
+
+interface AccountOption {
+  id: string;
+  name: string;
+  active: boolean;
 }
 
 const TYPE_LABELS: Record<Method["type"], string> = {
@@ -30,6 +41,40 @@ const fieldStyle: React.CSSProperties = {
   borderColor: "var(--border-strong)",
   background: "var(--surface)",
 };
+
+/** One-click account link, same pattern as the active toggle — not folded
+ * into the main edit form since re-linking is a distinct, lower-stakes
+ * action from renaming/retyping a method. */
+function AccountPicker({ method, accounts }: { method: Method; accounts: AccountOption[] }) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+
+  async function change(accountId: string) {
+    setPending(true);
+    await setPaymentMethodAccount(method.id, accountId || null);
+    setPending(false);
+    router.refresh();
+  }
+
+  return (
+    <select
+      aria-label={`Account for ${method.name}`}
+      className="h-9 rounded border px-2"
+      style={fieldStyle}
+      value={method.accountId ?? ""}
+      disabled={pending}
+      onChange={(e) => change(e.target.value)}
+    >
+      <option value="">Unlinked</option>
+      {accounts.map((a) => (
+        <option key={a.id} value={a.id}>
+          {a.name}
+          {a.active ? "" : " (inactive)"}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 function EditRow({
   method,
@@ -65,7 +110,7 @@ function EditRow({
 
   return (
     <tr style={{ borderBottom: "1px solid var(--border)" }}>
-      <td className="p-2">
+      <td className="px-4 py-3">
         <input
           aria-label="Name"
           className="h-9 rounded border px-2"
@@ -74,7 +119,7 @@ function EditRow({
           onChange={(e) => setName(e.target.value)}
         />
       </td>
-      <td className="p-2">
+      <td className="px-4 py-3">
         <select
           aria-label="Type"
           className="h-9 rounded border px-2"
@@ -89,7 +134,12 @@ function EditRow({
           ))}
         </select>
       </td>
-      <td className="p-2">
+      {/* Account column stays out of the edit form — re-linking is the
+          separate AccountPicker in view mode, not part of this save. */}
+      <td className="px-4 py-3" style={{ color: "var(--text-faint)" }}>
+        —
+      </td>
+      <td className="px-4 py-3">
         <input
           aria-label="Display order"
           inputMode="numeric"
@@ -99,7 +149,7 @@ function EditRow({
           onChange={(e) => setDisplayOrder(e.target.value.replace(/[^\d-]/g, ""))}
         />
       </td>
-      <td className="p-2" colSpan={2}>
+      <td className="px-4 py-3" colSpan={2}>
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -121,7 +171,7 @@ function EditRow({
   );
 }
 
-function Row({ method }: { method: Method }) {
+function Row({ method, accounts }: { method: Method; accounts: AccountOption[] }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [pending, setPending] = useState(false);
@@ -138,24 +188,25 @@ function Row({ method }: { method: Method }) {
   }
 
   return (
-    <tr style={{ borderBottom: "1px solid var(--border)" }}>
-      <td className="p-2" style={{ opacity: method.active ? 1 : 0.5 }}>
+    <tr className="table-row-hover" style={{ borderBottom: "1px solid var(--border)" }}>
+      <td className="px-4 py-3" style={{ opacity: method.active ? 1 : 0.5 }}>
         {method.name}
       </td>
-      <td className="p-2" style={{ opacity: method.active ? 1 : 0.5 }}>
+      <td className="px-4 py-3" style={{ opacity: method.active ? 1 : 0.5 }}>
         {TYPE_LABELS[method.type]}
       </td>
-      <td className="p-2" style={{ opacity: method.active ? 1 : 0.5 }}>
+      <td className="px-4 py-3">
+        <AccountPicker method={method} accounts={accounts} />
+      </td>
+      <td className="px-4 py-3" style={{ opacity: method.active ? 1 : 0.5 }}>
         {method.displayOrder}
       </td>
-      <td className="p-2">
-        {method.active ? (
-          <span style={{ color: "var(--text)" }}>Active</span>
-        ) : (
-          <span style={{ color: "var(--text-faint)" }}>Inactive</span>
-        )}
+      <td className="px-4 py-3">
+        <Badge tone={method.active ? "neutral" : "muted"}>
+          {method.active ? "Active" : "Inactive"}
+        </Badge>
       </td>
-      <td className="p-2 text-right">
+      <td className="px-4 py-3 text-right">
         <div className="flex justify-end gap-3">
           <button type="button" onClick={() => setEditing(true)} style={{ color: "var(--brand)" }}>
             Edit
@@ -207,10 +258,7 @@ function AddRow() {
   }
 
   return (
-    <div className="mt-4 flex flex-col gap-2 rounded-card border p-3" style={fieldStyle}>
-      <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>
-        Add payment method
-      </h2>
+    <FormPanel title="Add payment method" error={error} animate delayMs={40}>
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-1">
           <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>
@@ -259,40 +307,42 @@ function AddRow() {
           type="button"
           disabled={pending}
           onClick={add}
-          className="h-9 rounded-card px-4 font-medium"
-          style={{ background: "var(--brand)", color: "var(--on-brand)", opacity: pending ? 0.7 : 1 }}
+          className="btn-primary h-9 rounded-card px-4 font-medium"
+          style={{ opacity: pending ? 0.7 : 1 }}
         >
           {pending ? "Adding…" : "Add"}
         </button>
       </div>
-      {error ? (
-        <p style={{ fontSize: "var(--text-label)", color: "var(--warn)" }}>{error}</p>
-      ) : null}
-    </div>
+    </FormPanel>
   );
 }
 
-export default function PaymentMethodsManager({ methods }: { methods: Method[] }) {
+export default function PaymentMethodsManager({
+  methods,
+  accounts,
+}: {
+  methods: Method[];
+  accounts: AccountOption[];
+}) {
   return (
     <div className="flex flex-col gap-3">
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse" style={{ fontSize: "var(--text-label)" }}>
-          <thead>
-            <tr style={{ borderBottom: "1px solid var(--border-strong)" }}>
-              <th className="p-2 text-left">Name</th>
-              <th className="p-2 text-left">Type</th>
-              <th className="p-2 text-left">Order</th>
-              <th className="p-2 text-left">Status</th>
-              <th className="p-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {methods.map((m) => (
-              <Row key={m.id} method={m} />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={[
+          { key: "name", header: "Name" },
+          { key: "type", header: "Type" },
+          { key: "account", header: "Account" },
+          { key: "order", header: "Order" },
+          { key: "status", header: "Status" },
+          { key: "actions", header: "" },
+        ]}
+        isEmpty={methods.length === 0}
+        emptyMessage="No payment methods yet."
+        animate
+      >
+        {methods.map((m) => (
+          <Row key={m.id} method={m} accounts={accounts} />
+        ))}
+      </DataTable>
       <AddRow />
     </div>
   );

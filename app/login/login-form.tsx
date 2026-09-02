@@ -64,6 +64,10 @@ export default function LoginForm() {
       >
         {pending ? "Signing in…" : "Sign in"}
       </button>
+
+      <p style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}>
+        Forgotten your password? Ask the owner to reset it from Settings.
+      </p>
     </form>
   );
 }

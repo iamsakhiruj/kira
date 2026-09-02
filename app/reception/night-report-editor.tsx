@@ -8,6 +8,7 @@ import {
   reconcile,
   requiresVarianceReason,
   revenueGap,
+  otaReceivableSen,
   totalRevenueSen,
 } from "@/lib/nightReport";
 import { editNightReport } from "./actions";
@@ -26,9 +27,10 @@ type Amt = string;
 export interface EditorInitial {
   rooms: { available: number; sold: number; houseUse: number; revenueSen: number; reportPhotoUrl: string };
   revenueLines: { category: string; amountSen: number; note: string }[];
+  otaBookings: { platformId: string; bookingsCount: number; roomRevenueSen: number; guestPaidPlatform: boolean }[];
   collections: {
     cashSen: number; cardSen: number; transferSen: number; ewalletSen: number;
-    otaPrepaidSen: number; chargeToAccountSen: number; depositsSen: number;
+    chargeToAccountSen: number; depositsSen: number;
     refundsSen: number; receivablesSettledSen: number;
   };
   expenses: { category: string; amountSen: number; paidTo: string; paidBy: (typeof PAID_BY)[number]; note: string; receiptUrl: string }[];
@@ -39,6 +41,7 @@ export interface EditorInitial {
 }
 
 interface RevRow { id: number; category: string; amount: Amt; note: string }
+interface OtaRow { id: number; platformId: string; bookingsCount: string; roomRevenue: Amt; guestPaidPlatform: boolean }
 interface ExpRow { id: number; category: string; amount: Amt; paidTo: string; paidBy: (typeof PAID_BY)[number]; note: string; receiptUrl: string }
 
 function parseAmt(s: string): number | null {
@@ -109,6 +112,7 @@ export default function NightReportEditor({
   expenseCeilingSen,
   revenueCategoryNames,
   expenseCategoryNames,
+  otaPlatforms,
 }: {
   id: string;
   date: string;
@@ -118,35 +122,56 @@ export default function NightReportEditor({
   expenseCeilingSen: number;
   revenueCategoryNames: string[];
   expenseCategoryNames: string[];
+  otaPlatforms: { id: string; name: string; guestPaysPlatform: boolean }[];
 }) {
   const router = useRouter();
+  // The stored revenueSen is the combined total (walk-in + OTA) — back out
+  // the walk-in-only portion once, at load, so this form can split the same
+  // way the reception form does. If a report was submitted with the OTA
+  // portion missing from the total (exactly the bug this split prevents
+  // going forward), this comes out negative and the amber-outlined input
+  // surfaces the mistake for the owner/manager to fix here.
+  const initialOtaRoomRevenueSen = initial.otaBookings.reduce(
+    (sum, l) => sum + l.roomRevenueSen,
+    0,
+  );
   const [rooms, setRooms] = useState({
     available: String(initial.rooms.available),
     sold: String(initial.rooms.sold),
     houseUse: String(initial.rooms.houseUse),
-    revenue: fromSen(initial.rooms.revenueSen),
+    walkInRevenue: fromSen(initial.rooms.revenueSen - initialOtaRoomRevenueSen),
     reportPhotoUrl: initial.rooms.reportPhotoUrl,
   });
   const [revenueLines, setRevenueLines] = useState<RevRow[]>(() =>
     initial.revenueLines.map((l, i) => ({ id: i + 1, category: l.category, amount: fromSen(l.amountSen), note: l.note })),
+  );
+  const [otaBookings, setOtaBookings] = useState<OtaRow[]>(() =>
+    initial.otaBookings.map((l, i) => ({
+      id: initial.revenueLines.length + 1 + i,
+      platformId: l.platformId,
+      bookingsCount: String(l.bookingsCount),
+      roomRevenue: fromSen(l.roomRevenueSen),
+      guestPaidPlatform: l.guestPaidPlatform,
+    })),
   );
   const [collections, setCollections] = useState({
     cash: fromSen(initial.collections.cashSen),
     card: fromSen(initial.collections.cardSen),
     transfer: fromSen(initial.collections.transferSen),
     ewallet: fromSen(initial.collections.ewalletSen),
-    otaPrepaid: fromSen(initial.collections.otaPrepaidSen),
     chargeToAccount: fromSen(initial.collections.chargeToAccountSen),
     deposits: fromSen(initial.collections.depositsSen),
     refunds: fromSen(initial.collections.refundsSen),
     receivablesSettled: fromSen(initial.collections.receivablesSettledSen),
   });
   const [expenses, setExpenses] = useState<ExpRow[]>(() =>
-    initial.expenses.map((e, i) => ({ id: initial.revenueLines.length + 1 + i, category: e.category, amount: fromSen(e.amountSen), paidTo: e.paidTo, paidBy: e.paidBy, note: e.note, receiptUrl: e.receiptUrl })),
+    initial.expenses.map((e, i) => ({ id: initial.revenueLines.length + initial.otaBookings.length + 1 + i, category: e.category, amount: fromSen(e.amountSen), paidTo: e.paidTo, paidBy: e.paidBy, note: e.note, receiptUrl: e.receiptUrl })),
   );
   // Seed the id counter above every prefilled row's id (pure expression from
   // props — never read during render). New rows get ids from here in handlers.
-  const nextId = useRef(initial.revenueLines.length + initial.expenses.length + 1);
+  const nextId = useRef(
+    initial.revenueLines.length + initial.otaBookings.length + initial.expenses.length + 1,
+  );
   const [cash, setCash] = useState({
     openingFloat: fromSen(initial.cash.openingFloatSen),
     bankedIn: fromSen(initial.cash.bankedInSen),
@@ -164,33 +189,51 @@ export default function NightReportEditor({
       expenses: expenses.map((e) => ({ amountSen: sen(e.amount), paidBy: e.paidBy })),
       cash: { openingFloatSen: sen(cash.openingFloat), bankedInSen: sen(cash.bankedIn), countedSen: sen(cash.counted) },
     });
-    const totalRev = totalRevenueSen(sen(rooms.revenue), revenueLines.map((l) => ({ amountSen: sen(l.amount) })));
+    const otaRoomRevenueSen = otaBookings.reduce((sum, l) => sum + sen(l.roomRevenue), 0);
+    const roomRevenueSen = sen(rooms.walkInRevenue) + otaRoomRevenueSen;
+    const totalRev = totalRevenueSen(roomRevenueSen, revenueLines.map((l) => ({ amountSen: sen(l.amount) })));
+    const otaBookingsSen = otaBookings.map((l) => ({
+      roomRevenueSen: sen(l.roomRevenue),
+      guestPaidPlatform: l.guestPaidPlatform,
+    }));
     const gap = revenueGap({
       totalRevenueSen: totalRev,
+      otaReceivableSen: otaReceivableSen(otaBookingsSen),
       collections: {
         cashSen: sen(collections.cash), cardSen: sen(collections.card), transferSen: sen(collections.transfer),
-        ewalletSen: sen(collections.ewallet), otaPrepaidSen: sen(collections.otaPrepaid),
+        ewalletSen: sen(collections.ewallet),
         chargeToAccountSen: sen(collections.chargeToAccount), refundsSen: sen(collections.refunds),
         receivablesSettledSen: sen(collections.receivablesSettled),
       },
     });
     return {
       recon, gap,
+      roomRevenueSen,
+      otaRoomRevenueSen,
       reasonRequired: requiresVarianceReason(recon.varianceSen, varianceThresholdSen),
       gapReasonRequired: requiresVarianceReason(gap.gapSen, revenueGapThresholdSen),
     };
-  }, [rooms, revenueLines, collections, expenses, cash, varianceThresholdSen, revenueGapThresholdSen]);
+  }, [rooms, revenueLines, otaBookings, collections, expenses, cash, varianceThresholdSen, revenueGapThresholdSen]);
 
   async function save() {
     setError(null);
     const badAmount =
-      amtInvalid(rooms.revenue) ||
+      amtInvalid(rooms.walkInRevenue) ||
       Object.values(collections).some((v) => amtInvalid(v)) ||
       Object.values(cash).some((v) => amtInvalid(v)) ||
       revenueLines.some((l) => amtInvalid(l.amount)) ||
+      otaBookings.some((l) => amtInvalid(l.roomRevenue)) ||
       expenses.some((e) => amtInvalid(e.amount));
     if (badAmount) {
       setError("Some amounts aren't valid — an amount can't be negative. Check the amber fields.");
+      return;
+    }
+    const badOtaBooking = otaBookings.some((l) => {
+      const count = parseCount(l.bookingsCount);
+      return !l.platformId || Number.isNaN(count) || count < 1;
+    });
+    if (badOtaBooking) {
+      setError("Each OTA booking line needs a platform and at least 1 booking — remove a line instead of leaving it blank.");
       return;
     }
     const available = parseCount(rooms.available);
@@ -221,13 +264,19 @@ export default function NightReportEditor({
     const report = {
       rooms: {
         available, sold, houseUse,
-        revenueSen: sen(rooms.revenue),
+        revenueSen: derived.roomRevenueSen,
         reportPhotoUrl: rooms.reportPhotoUrl.trim() || undefined,
       },
       revenueLines: revenueLines.map((l) => ({ category: l.category, amountSen: sen(l.amount), note: l.note })),
+      otaBookings: otaBookings.map((l) => ({
+        platformId: l.platformId,
+        bookingsCount: parseCount(l.bookingsCount),
+        roomRevenueSen: sen(l.roomRevenue),
+        guestPaidPlatform: l.guestPaidPlatform,
+      })),
       collections: {
         cashSen: sen(collections.cash), cardSen: sen(collections.card), transferSen: sen(collections.transfer),
-        ewalletSen: sen(collections.ewallet), otaPrepaidSen: sen(collections.otaPrepaid),
+        ewalletSen: sen(collections.ewallet),
         chargeToAccountSen: sen(collections.chargeToAccount), depositsSen: sen(collections.deposits),
         refundsSen: sen(collections.refunds), receivablesSettledSen: sen(collections.receivablesSettled),
       },
@@ -271,7 +320,19 @@ export default function NightReportEditor({
           <Field label="Rooms available"><IntInput ariaLabel="Rooms available" value={rooms.available} onChange={(x) => setRooms({ ...rooms, available: x })} /></Field>
           <Field label="Rooms sold"><IntInput ariaLabel="Rooms sold" value={rooms.sold} onChange={(x) => setRooms({ ...rooms, sold: x })} /></Field>
           <Field label="House use / comp"><IntInput ariaLabel="House use" value={rooms.houseUse} onChange={(x) => setRooms({ ...rooms, houseUse: x })} /></Field>
-          <Field label="Room revenue (RM)"><MoneyInput ariaLabel="Room revenue" value={rooms.revenue} onChange={(x) => setRooms({ ...rooms, revenue: x })} /></Field>
+        </div>
+        <div className="flex flex-col gap-2 rounded-card border p-3" style={fieldStyle}>
+          <Field label="Walk-in and direct room revenue (RM)">
+            <MoneyInput ariaLabel="Walk-in and direct room revenue" value={rooms.walkInRevenue} onChange={(x) => setRooms({ ...rooms, walkInRevenue: x })} />
+          </Field>
+          <div className="flex items-center justify-between" style={{ fontSize: "var(--text-label)" }}>
+            <span style={{ color: "var(--text-muted)" }}>From OTA bookings</span>
+            <span className="money" style={{ color: "var(--text-muted)" }}>{formatRM(derived.otaRoomRevenueSen)}</span>
+          </div>
+          <div className="flex items-center justify-between" style={{ borderTop: "1px solid var(--border)", paddingTop: "var(--space-2)" }}>
+            <span style={{ fontWeight: 600 }}>Total room revenue</span>
+            <span className="money" style={{ fontWeight: 600 }}>{formatRM(derived.roomRevenueSen)}</span>
+          </div>
         </div>
         <Field label="iHotel report photo link (optional)">
           <input aria-label="iHotel report photo link" className="h-11 rounded border px-3" style={fieldStyle} value={rooms.reportPhotoUrl} onChange={(e) => setRooms({ ...rooms, reportPhotoUrl: e.target.value })} />
@@ -300,13 +361,70 @@ export default function NightReportEditor({
           className="h-11 rounded-card border" style={{ borderColor: "var(--border-strong)", color: "var(--brand)" }}>+ Add revenue line</button>
       </section>
 
+      {/* OTA bookings */}
+      <section className="flex flex-col gap-3">
+        <Heading>OTA bookings</Heading>
+        {otaBookings.map((line, i) => (
+          <div key={line.id} className="flex flex-col gap-2 rounded-card border p-3" style={fieldStyle}>
+            <div className="grid grid-cols-2 gap-2">
+              <select aria-label="OTA platform" className="h-11 rounded border px-2" style={fieldStyle} value={line.platformId}
+                onChange={(e) => {
+                  const platformId = e.target.value;
+                  const platform = otaPlatforms.find((p) => p.id === platformId);
+                  setOtaBookings(otaBookings.map((l, j) => j === i ? {
+                    ...l,
+                    platformId,
+                    guestPaidPlatform: platform?.guestPaysPlatform ?? l.guestPaidPlatform,
+                  } : l));
+                }}>
+                {otaPlatforms.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {line.platformId && !otaPlatforms.some((p) => p.id === line.platformId) ? (
+                  <option value={line.platformId}>Migrated — choose a platform</option>
+                ) : null}
+              </select>
+              <IntInput ariaLabel="Number of bookings" value={line.bookingsCount}
+                onChange={(x) => setOtaBookings(otaBookings.map((l, j) => j === i ? { ...l, bookingsCount: x } : l))} />
+            </div>
+            <MoneyInput ariaLabel="OTA room revenue" value={line.roomRevenue}
+              onChange={(x) => setOtaBookings(otaBookings.map((l, j) => j === i ? { ...l, roomRevenue: x } : l))} />
+            <div className="flex gap-2" role="group" aria-label="Guest paid">
+              {([[false, "Guest paid us"], [true, "Guest paid platform"]] as const).map(([value, label]) => (
+                <button key={String(value)} type="button"
+                  onClick={() => setOtaBookings(otaBookings.map((l, j) => j === i ? { ...l, guestPaidPlatform: value } : l))}
+                  className="h-11 flex-1 rounded-card border"
+                  style={{
+                    borderColor: line.guestPaidPlatform === value ? "var(--brand)" : "var(--border-strong)",
+                    background: line.guestPaidPlatform === value ? "var(--brand-tint)" : "var(--surface)",
+                    color: line.guestPaidPlatform === value ? "var(--brand)" : "var(--text-muted)",
+                    fontWeight: line.guestPaidPlatform === value ? 600 : undefined,
+                  }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={() => setOtaBookings(otaBookings.filter((_, j) => j !== i))} style={{ fontSize: "var(--text-label)", color: "var(--text-muted)", alignSelf: "flex-start" }}>Remove</button>
+          </div>
+        ))}
+        <button type="button" onClick={() => {
+          const platform = otaPlatforms[0];
+          setOtaBookings([...otaBookings, {
+            id: nextId.current++,
+            platformId: platform?.id ?? "",
+            bookingsCount: "1",
+            roomRevenue: "",
+            guestPaidPlatform: platform?.guestPaysPlatform ?? false,
+          }]);
+        }} disabled={otaPlatforms.length === 0}
+          className="h-11 rounded-card border" style={{ borderColor: "var(--border-strong)", color: "var(--brand)" }}>+ Add OTA booking</button>
+      </section>
+
       {/* Collections */}
       <section className="flex flex-col gap-3">
         <Heading>Collections</Heading>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {([
             ["cash", "Cash"], ["card", "Card terminal"], ["transfer", "DuitNow / transfer / QR"], ["ewallet", "E-wallet"],
-            ["otaPrepaid", "OTA prepaid (receivable)"], ["chargeToAccount", "Charge to account (receivable)"],
+            ["chargeToAccount", "Charge to account (receivable)"],
             ["deposits", "Deposits received"], ["refunds", "Refunds paid out"], ["receivablesSettled", "Receivables settled today"],
           ] as const).map(([key, label]) => (
             <Field key={key} label={label}>
