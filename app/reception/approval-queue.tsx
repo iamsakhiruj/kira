@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Document, WithId } from "mongodb";
 import {
   getPendingBusinessDays,
@@ -165,6 +166,7 @@ export default async function ApprovalQueue() {
                       <td className="p-2">
                         {String(d.date)}
                         {d.enteredLate ? <Badge>Backdated</Badge> : null}
+                        {d.editedBy ? <Badge>Edited</Badge> : null}
                       </td>
                       <td className="p-2">{nameOf(d.submittedBy)}</td>
                       <SubmittedCell
@@ -187,7 +189,17 @@ export default async function ApprovalQueue() {
                         {formatRM(gapSen)}
                       </td>
                       <td className="p-2 text-right">
-                        <ApproveButton businessDayId={String(d._id)} />
+                        <div className="flex items-center justify-end gap-3">
+                          {/* Owner/manager may fix a mistake before approving —
+                              only while submitted; approved days lock. */}
+                          <Link
+                            href={`/reception/edit/${String(d._id)}`}
+                            style={{ color: "var(--brand)", fontSize: "var(--text-label)" }}
+                          >
+                            Edit
+                          </Link>
+                          <ApproveButton businessDayId={String(d._id)} />
+                        </div>
                       </td>
                     </tr>
                   );
@@ -295,6 +307,7 @@ export default async function ApprovalQueue() {
                       <td className="p-2">
                         {String(d.date)}
                         {d.enteredLate ? <Badge>Backdated</Badge> : null}
+                        {d.editedBy ? <Badge>Edited</Badge> : null}
                       </td>
                       <td className="p-2">{nameOf(d.submittedBy)}</td>
                       <SubmittedCell

@@ -104,6 +104,26 @@ export async function getRecentlyApprovedBusinessDays(
 }
 
 /**
+ * Update a still-submitted day's figures (an owner/manager pre-approval edit).
+ * Guarded by status: "submitted" in the filter so a day that was approved
+ * between the caller's read and this write can't be edited — CLAUDE.md rule 5
+ * (approved days are immutable) holds. Returns the updated doc, or null if it
+ * was no longer submitted.
+ */
+export async function updateSubmittedBusinessDay(
+  id: string,
+  set: Record<string, unknown>,
+): Promise<WithId<Document> | null> {
+  if (!ObjectId.isValid(id)) return null;
+  const col = await collection();
+  return col.findOneAndUpdate(
+    { _id: new ObjectId(id), status: "submitted" },
+    { $set: set },
+    { returnDocument: "after" },
+  );
+}
+
+/**
  * Approve a submitted day: sets status/approvedBy/approvedAt. Guarded by
  * status: "submitted" in the filter so a double-click (or two owners
  * approving at once) can't approve the same day twice — the second call

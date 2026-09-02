@@ -339,6 +339,16 @@ Reception can't edit a submitted report; they raise a request and a manager/owne
 - **Both raise and resolve are audit-logged**: create → `action: "create"`; apply → `"correct"`; reject → `"update"`, note carried as the audit `reason`.
 - **Surfacing:** reception raises from their own submitted card and sees a "My correction requests" list with the outcome; the approval queue shows an "Open correction requests (N)" section with apply/reject controls.
 
+### Owner/manager pre-approval edit
+
+The correction-request flow is for reception. **Owner and manager can instead edit a still-submitted report directly**, from the approval queue's "Edit" link — an owner shouldn't have to raise a request against themselves before approving.
+
+- **Only while `status === "submitted"`.** Once approved, the day locks and this is refused (rule 5 stays) — guarded both by an explicit check in `editNightReport` and by the `status: "submitted"` filter in `updateSubmittedBusinessDay` (`lib/businessDays.ts`), so a day approved between read and write can't be edited.
+- **Unlike a correction, this DOES change the figures in place** — it's a genuine pre-approval fix, not a documented adjustment. `date`, `status`, `submittedBy`/`submittedAt` and the approval fields are never touched; `editedBy`/`editedAt` are stamped, and the whole before/after is audit-logged (`action: "update"`, reason "edited before approval").
+- **Server-side validation is shared with submit** (`validateFigures` in `app/reception/actions.ts`): variance and the revenue gap are recomputed, categories and the expense ceiling re-checked — an edit can never validate differently from the original submission. Owner/manager only (`editNightReport` calls `requireUser("manager")`; reception 403).
+- **The edit form is a separate component** (`app/reception/night-report-editor.tsx`, route `/reception/edit/[id]`) — reception's 1am `night-report-form.tsx` is left untouched; only the server validation is shared, not the form UI.
+- **An "Edited" badge** (amber) shows in both approval-queue tables wherever `editedBy` is set, so it's visible the figures aren't exactly as submitted.
+
 ---
 
 ## Conventions
