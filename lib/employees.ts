@@ -60,6 +60,11 @@ export const OwnerOnlyEmployeeFieldsSchema = z.object({
   taxNumber: z.string().max(60).default(""),
   workPermitExpiry: nullableDateStr.default(null),
   passportExpiry: nullableDateStr.default(null),
+  /** Link to a partner record (Phase 2 §3: "partners who draw a salary appear
+   * here too"). When set, salary paid to this employee is director
+   * remuneration and is flagged as such on the payslip so reports can tell it
+   * apart. The partners collection is built in 2.6; this holds the id. */
+  partnerId: z.string().trim().nullable().default(null),
 });
 
 /** Derived from the schemas themselves, not retyped — the allow-list used

@@ -43,6 +43,7 @@ interface OwnerFields {
   taxNumber: string;
   workPermitExpiry: string | null;
   passportExpiry: string | null;
+  partnerId: string | null;
 }
 
 type EmployeeRow = ManagerFields & Partial<OwnerFields>;
@@ -247,6 +248,22 @@ function OwnerFieldInputs({
           style={fieldStyle}
         />
       </label>
+      <label className="flex flex-col gap-1 sm:col-span-3">
+        <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>
+          Partner link (director) — optional
+        </span>
+        <input
+          aria-label="Partner link"
+          placeholder="Partner record id, if this employee is a director/partner"
+          value={value.partnerId ?? ""}
+          onChange={(e) => onChange({ ...value, partnerId: e.target.value.trim() || null })}
+          className="h-11 rounded border px-3"
+          style={fieldStyle}
+        />
+        <span style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}>
+          When set, salary paid here is flagged as director remuneration on the payslip.
+        </span>
+      </label>
     </div>
   );
 }
@@ -276,6 +293,7 @@ const BLANK_OWNER: OwnerFields & { basicAmount: string; fixedAllowances: string 
   taxNumber: "",
   workPermitExpiry: null,
   passportExpiry: null,
+  partnerId: null,
 };
 
 function parseMoney(s: string): number | null {
@@ -331,6 +349,7 @@ function EmployeeForm({
           taxNumber: initial.taxNumber ?? "",
           workPermitExpiry: initial.workPermitExpiry ?? null,
           passportExpiry: initial.passportExpiry ?? null,
+          partnerId: initial.partnerId ?? null,
         }
       : BLANK_OWNER,
   );
@@ -366,6 +385,7 @@ function EmployeeForm({
         taxNumber: owner.taxNumber,
         workPermitExpiry: owner.workPermitExpiry,
         passportExpiry: owner.passportExpiry,
+        partnerId: owner.partnerId,
       };
     }
 

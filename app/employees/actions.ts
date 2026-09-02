@@ -21,12 +21,12 @@ export async function addEmployee(input: unknown): Promise<ActionResult> {
     }
     const { payType, basicAmountSen, fixedAllowancesSen, bankName, bankAccount,
       icOrPassport, nationality, epfNumber, socsoNumber, taxNumber,
-      workPermitExpiry, passportExpiry, ...managerFields } = parsed.data;
+      workPermitExpiry, passportExpiry, partnerId, ...managerFields } = parsed.data;
     await createEmployee(
       managerFields,
       { payType, basicAmountSen, fixedAllowancesSen, bankName, bankAccount,
         icOrPassport, nationality, epfNumber, socsoNumber, taxNumber,
-        workPermitExpiry, passportExpiry },
+        workPermitExpiry, passportExpiry, partnerId },
       { id: user.sub, role: user.role },
     );
     return { ok: true };

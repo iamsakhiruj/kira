@@ -41,6 +41,7 @@ const OWNER_ONLY_DEFAULTS: z.infer<typeof OwnerOnlyEmployeeFieldsSchema> = {
   taxNumber: "",
   workPermitExpiry: null,
   passportExpiry: null,
+  partnerId: null,
 };
 
 /**

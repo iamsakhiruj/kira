@@ -279,6 +279,25 @@ Minimal on purpose — just enough to make self-approval visible, not the full r
 
 ---
 
+## Salary (Phase 2 §2.5)
+
+Owner-only, enforced server-side (`app/salary/layout.tsx` + every action re-checks `requireUser("owner")`; manager gets 403 at `proxy.ts` and the guard). A monthly payroll run per calendar month.
+
+- **This system does NOT calculate statutory deductions.** No PCB/EPF/SOCSO/EIS rate tables, no Third Schedule logic — the accountant handles those. A single owner-typed **"Statutory deductions (from accountant)"** figure per line is subtracted as-is. We record what was paid.
+- **`computeSalary()` in `lib/salary.ts` is the pay arithmetic, pure and unit-tested** (`lib/salary.test.ts`) — the one calculation that underpays a real person if wrong, so it carries explicit tests including the Employment Act paid-leave trap.
+  - **Monthly-rated:** full monthly basic regardless of paid leave. Annual leave, sick leave, public holidays and rest days **never** reduce pay. Only `unpaid_absence` days do, at the ordinary rate of pay: **`unpaidAbsenceDeductionSen = round(basicAmountSen × unpaidDays / 26)`**, one rounding on the product (never per-day, so it can't drift against the employee).
+  - **The divisor is the fixed `26`** (`ORDINARY_RATE_DIVISOR` in `lib/salary.ts`) that **Employment Act 1955 s.60I** defines as the ordinary rate of pay for a monthly-rated employee (monthly wages ÷ 26) — a fixed number, **not** the month's actual working days. A working-days divisor (usually < 26) produces a larger deduction in most months, which underpays; deducting *more* than the Act permits is the error that matters, deducting less is not. `workingDaysInMonth` (= calendar days − rest days − public holidays) is still computed and stored per line as month context and shown on the run screen, but it is **not** the divisor.
+  - **Daily-rated:** `dailyRate × daysPresent`. An absent day is simply not present — no separate unpaid-absence line applies.
+  - ORP base is **basic only**; fixed allowances are added to gross and never part of the per-day deduction (errs toward paying more — the safe side). Revisit per-allowance if an allowance is genuinely EA "wages".
+- **Deductions:** advance repayment (a **manual sen field** for now — the `advances` collection isn't built yet; wired so a later step can source it), unpaid absence (computed), a free-text **other** line with a **required note**, and the statutory figure. `netSen = grossSen − totalDeductions`; a negative net is shown (flagged "over-deducted"), never silently clamped.
+- **`salaryPayments` (schema `lib/salaryPayments.ts`, DB `lib/salaryStore.ts`) snapshots every input and every computed figure onto the document** — a paid line never recomputes from live attendance or a since-edited employee record (same freeze principle as approved days and §1's frozen shares). One base doc per `{employeeId, month}` (partial-unique index where `adjustmentOf: null`).
+- **`generateOrRefreshDraftRun(month)`** creates/updates a draft line per **active** employee from attendance; re-running preserves manual deduction fields already entered and only recomputes attendance-driven figures; a **paid** line is locked and left untouched.
+- **Locking:** `markLinePaid()` sets `status: "paid"` guarded on `status: "draft"` (double-click / two-owner safe, same pattern as `approveBusinessDay`). A paid line can't be edited — corrections are a **new adjustment document** (`createAdjustment()`, `adjustmentOf` → original), recomputed from current data, draft until paid. History is never mutated.
+- **Director remuneration:** employees gain a nullable owner-only **`partnerId`** field (forward-compatible with 2.6's partners; §3 "partners who draw a salary appear here too"). A partner-linked employee runs through payroll normally; `directorRemuneration = partnerId != null` is snapshotted onto the line and flagged on the payslip so reports can distinguish it. No partner-linking UI beyond a plain id field on the owner employee form (partners collection is 2.6).
+- **Payslip** (`app/salary/[id]`) shows gross, each deduction, and net, with the director/adjustment flags. Every action audit-logged (paid line carries `reason: "salary paid"`; adjustments `action: "correct"`).
+
+---
+
 ## Conventions
 
 - Server Components by default; Client Components only where there's interaction

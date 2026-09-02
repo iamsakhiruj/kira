@@ -42,6 +42,7 @@ export default async function EmployeesPage() {
           taxNumber: e.taxNumber,
           workPermitExpiry: e.workPermitExpiry,
           passportExpiry: e.passportExpiry,
+          partnerId: e.partnerId ?? null,
         }))
       : (await getEmployeesManagerView()).map((e) => ({
           id: (e as { _id: { toString(): string } })._id.toString(),
