@@ -7,6 +7,8 @@ import {
   collectionsByChannel,
   occupancy,
   lateSubmissionCount,
+  guestsByNationality,
+  cancellationSummary,
   type NightDayDoc,
   type StandaloneEntry,
   type PartnerTxn,
@@ -40,6 +42,58 @@ function makeDay(overrides: Partial<NightDayDoc> = {}): NightDayDoc {
 // ---------------------------------------------------------------------------
 // revenueBySource
 // ---------------------------------------------------------------------------
+
+describe("cancellationSummary", () => {
+  it("separates cancelled from no-show and sums value + forfeited deposits", () => {
+    const s = cancellationSummary([
+      { status: "cancelled", bookingValueSen: 100000, forfeitedSen: 0 },
+      { status: "cancelled", bookingValueSen: 50000, forfeitedSen: 20000 },
+      { status: "no_show", bookingValueSen: 80000, forfeitedSen: 80000 },
+    ]);
+    expect(s.cancelledCount).toBe(2);
+    expect(s.cancelledValueSen).toBe(150000);
+    expect(s.noShowCount).toBe(1);
+    expect(s.noShowValueSen).toBe(80000);
+    expect(s.depositsForfeitedSen).toBe(100000); // 0 + 20000 + 80000
+  });
+  it("is all zero for no cancellations", () => {
+    expect(cancellationSummary([])).toEqual({
+      cancelledCount: 0,
+      cancelledValueSen: 0,
+      noShowCount: 0,
+      noShowValueSen: 0,
+      depositsForfeitedSen: 0,
+    });
+  });
+});
+
+describe("revenueBySource — cancellation fees", () => {
+  it("adds forfeited deposits as a 'Cancellation fees' source, once", () => {
+    const { totalSen, sources } = revenueBySource([], [], new Map(), 0, 30000);
+    expect(totalSen).toBe(30000);
+    expect(sources.find((s) => s.name === "Cancellation fees")?.amountSen).toBe(30000);
+  });
+});
+
+describe("guestsByNationality", () => {
+  it("counts bookings per nationality, resolves names, excludes cancelled/no-show", () => {
+    const result = guestsByNationality([
+      { nationality: "MY", status: "confirmed" },
+      { nationality: "MY", status: "checked_out" },
+      { nationality: "GB", status: "confirmed" },
+      { nationality: "SG", status: "cancelled" }, // excluded
+      { nationality: "SG", status: "no_show" }, // excluded
+    ]);
+    expect(result).toEqual([
+      { code: "MY", name: "Malaysia", count: 2 },
+      { code: "GB", name: "United Kingdom", count: 1 },
+    ]);
+  });
+  it("groups blank/legacy nationality as Unknown", () => {
+    const result = guestsByNationality([{ nationality: "", status: "confirmed" }]);
+    expect(result[0]).toEqual({ code: "unknown", name: "Unknown", count: 1 });
+  });
+});
 
 describe("revenueBySource", () => {
   it("grand total equals combinedTotalSen invariant", () => {
@@ -81,6 +135,22 @@ describe("revenueBySource", () => {
     const rooms = sources.find((s) => s.name === "Rooms");
     expect(rooms).toBeDefined();
     expect(rooms!.amountSen).toBe(50000);
+  });
+
+  it("adds booking room revenue as its own source, once, without double count (bookings §4)", () => {
+    const days = [makeDay({ rooms: { available: 10, sold: 5, houseUse: 0, revenueSen: 50000 }, revenueLines: [] })];
+    // rooms.revenueSen is walk-in + OTA only; booking revenue is disjoint.
+    const { totalSen, sources } = revenueBySource(days, [], new Map(), 12000);
+    expect(totalSen).toBe(62000); // 50000 rooms + 12000 bookings, each once
+    const bookings = sources.find((s) => s.name === "Rooms — bookings");
+    expect(bookings?.amountSen).toBe(12000);
+    // The night report's own "Rooms" source is untouched by booking accrual.
+    expect(sources.find((s) => s.name === "Rooms")?.amountSen).toBe(50000);
+  });
+
+  it("omits the bookings source when there is no booking revenue", () => {
+    const { sources } = revenueBySource([makeDay()], [], new Map(), 0);
+    expect(sources.find((s) => s.name === "Rooms — bookings")).toBeUndefined();
   });
 
   it("sources are sorted descending by amountSen", () => {

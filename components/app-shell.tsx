@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { isAuthorized, type Role } from "@/lib/session";
 import { getPendingBusinessDays } from "@/lib/businessDays";
+import { getCompanyDetails } from "@/lib/companyDetailsStore";
 import { logout } from "@/app/login/actions";
 import SidebarToggle from "./sidebar-toggle";
 import NavList, { type NavGroupData, type NavItemData } from "./nav-list";
@@ -59,6 +60,7 @@ const NAV_GROUPS: NavGroupDef[] = [
     items: [
       { label: "Dashboard", href: "/dashboard", minRole: "manager", icon: "LayoutDashboard" },
       { label: "Front desk", href: "/reception", minRole: "reception", icon: "ClipboardList" },
+      { label: "Bookings", href: "/bookings", minRole: "reception", icon: "BookMarked" },
       { label: "OTA", href: "/ota", minRole: "manager", icon: "Globe" },
     ],
   },
@@ -85,6 +87,8 @@ const NAV_GROUPS: NavGroupDef[] = [
       { label: "Categories", href: "/settings/categories", minRole: "manager", icon: "Tag" },
       { label: "Payment methods", href: "/settings/payment-methods", minRole: "manager", icon: "CreditCard" },
       { label: "OTA platforms", href: "/settings/ota-platforms", minRole: "manager", icon: "Settings" },
+      { label: "Letter templates", href: "/settings/letter-templates", minRole: "manager", icon: "Mail" },
+      { label: "Company details", href: "/settings/company", minRole: "owner", icon: "Building2" },
       { label: "Accounts", href: "/settings/accounts", minRole: "owner", icon: "Landmark" },
       { label: "Users", href: "/settings/users", minRole: "owner", icon: "UserCog" },
     ],
@@ -111,14 +115,14 @@ function visibleGroups(
     .filter((g) => g.items.length > 0);
 }
 
-function LogoMark() {
+function LogoMark({ letter }: { letter: string }) {
   return (
     <span
       className="logo-mark flex shrink-0 items-center justify-center"
       style={{ width: 30, height: 30, fontSize: 15, fontWeight: 700 }}
       aria-hidden="true"
     >
-      K
+      {letter}
     </span>
   );
 }
@@ -132,9 +136,16 @@ export default async function AppShell({
   userName: string;
   children: ReactNode;
 }) {
-  const pendingCount = isAuthorized(role, "manager")
-    ? (await getPendingBusinessDays()).length
-    : 0;
+  const [pendingCount, company] = await Promise.all([
+    isAuthorized(role, "manager")
+      ? getPendingBusinessDays().then((d) => d.length)
+      : Promise.resolve(0),
+    // The brand shown in the shell comes from Settings > Company details, not a
+    // hardcoded string.
+    getCompanyDetails(),
+  ]);
+  const brand = company.tradingName || "Accounts";
+  const logoLetter = brand.trim()[0]?.toUpperCase() ?? "•";
   const groups = visibleGroups(role, NAV_GROUPS, pendingCount);
 
   const nav = (
@@ -193,8 +204,8 @@ export default async function AppShell({
 
   const header = (
     <div className="flex items-center gap-2">
-      <LogoMark />
-      <span style={{ fontWeight: 600 }}>Hotel Bintang KL</span>
+      <LogoMark letter={logoLetter} />
+      <span style={{ fontWeight: 600 }}>{brand}</span>
     </div>
   );
 

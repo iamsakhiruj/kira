@@ -18,6 +18,9 @@ import {
   CreditCard,
   UserCog,
   Landmark,
+  BookMarked,
+  Mail,
+  Building2,
 } from "lucide-react";
 
 // A lucide component isn't a plain object — it can't cross the
@@ -42,6 +45,9 @@ const ICONS = {
   CreditCard,
   UserCog,
   Landmark,
+  BookMarked,
+  Mail,
+  Building2,
 } as const;
 
 export type IconName = keyof typeof ICONS;

@@ -10,6 +10,10 @@ import {
 } from "@/lib/businessDate";
 import { getBusinessDaysByDates, getEarliestBusinessDate } from "@/lib/businessDays";
 import {
+  ensureBookingIndexes,
+  getBookingAccrualByDates,
+} from "@/lib/bookingsStore";
+import {
   ensureCategoriesIndexes,
   ensureCategoriesSeeded,
   getActiveCategories,
@@ -82,14 +86,27 @@ export default async function ReceptionHome() {
   await ensureCorrectionRequestIndexes();
   await ensureOtaPlatformsIndexes();
   await ensureOtaPlatformsSeeded();
+  await ensureBookingIndexes();
 
-  const [docs, earliestDate, revenueCats, expenseCats, otaPlatformDocs] = await Promise.all([
-    getBusinessDaysByDates(window7),
-    getEarliestBusinessDate(),
-    getActiveCategories("revenue"),
-    getActiveCategories("expense"),
-    getActiveOtaPlatforms(),
-  ]);
+  const [docs, earliestDate, revenueCats, expenseCats, otaPlatformDocs, bookingAccrual] =
+    await Promise.all([
+      getBusinessDaysByDates(window7),
+      getEarliestBusinessDate(),
+      getActiveCategories("revenue"),
+      getActiveCategories("expense"),
+      getActiveOtaPlatforms(),
+      // Booking accrual for each of the 7 window dates — the read-only
+      // "from bookings staying tonight" line on the night report (brief §4).
+      getBookingAccrualByDates(window7),
+    ]);
+  const bookingAccrualByDate: Record<
+    string,
+    { roomsCount: number; roomRevenueSen: number; tourismTaxSen: number }
+  > = {};
+  for (const d of window7) {
+    const a = bookingAccrual.get(d);
+    if (a) bookingAccrualByDate[d] = a;
+  }
   const otaPlatforms = otaPlatformDocs.map((p) => ({
     id: p._id.toString(),
     name: p.name,
@@ -170,6 +187,7 @@ export default async function ReceptionHome() {
       expenseCategoryNames={expenseCategoryNames}
       otaPlatforms={otaPlatforms}
       existingDates={existingDates}
+      bookingAccrualByDate={bookingAccrualByDate}
     />
   );
 

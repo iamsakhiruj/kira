@@ -127,6 +127,7 @@ export default function NightReportScreen({
   expenseCategoryNames,
   otaPlatforms,
   existingDates,
+  bookingAccrualByDate,
 }: {
   slots: DaySlot[];
   currentDate: string;
@@ -143,6 +144,11 @@ export default function NightReportScreen({
    * these to warn instead of offering a blank form that would fail the unique
    * index on submit. */
   existingDates: string[];
+  /** Booking accrual per business date, passed straight to the form. */
+  bookingAccrualByDate: Record<
+    string,
+    { roomsCount: number; roomRevenueSen: number; tourismTaxSen: number }
+  >;
 }) {
   const firstMissing = slots.find((s) => s.summary === null)?.date ?? null;
   const [active, setActive] = useState<string | null>(firstMissing);
@@ -188,6 +194,7 @@ export default function NightReportScreen({
                 expenseCategoryNames={expenseCategoryNames}
                 otaPlatforms={otaPlatforms}
                 existingDates={existingDates}
+                bookingAccrualByDate={bookingAccrualByDate}
               />
             </div>
           );

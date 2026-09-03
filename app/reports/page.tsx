@@ -9,6 +9,11 @@ import { isAuthorized } from "@/lib/session";
 import { getSettings } from "@/lib/settings";
 import { businessDateFor } from "@/lib/businessDate";
 import { getBusinessDaysBetween } from "@/lib/businessDays";
+import {
+  sumBookingNightsBetween,
+  getBookingsByCheckInBetween,
+  getBookingsCancelledBetween,
+} from "@/lib/bookingsStore";
 import { getRevenueEntriesBetween } from "@/lib/revenueEntriesStore";
 import { getExpensesBetween } from "@/lib/expensesStore";
 import { getAllCategories } from "@/lib/categoriesStore";
@@ -23,6 +28,8 @@ import {
   collectionsByChannel,
   occupancy,
   lateSubmissionCount,
+  guestsByNationality,
+  cancellationSummary,
   type NightDayDoc,
   type StandaloneEntry,
 } from "@/lib/reportSummary";
@@ -237,6 +244,9 @@ export default async function ReportsPage({
     expCats,
     paymentMethods,
     partnerTxns,
+    bookingAccrual,
+    arrivingBookings,
+    cancelledBookings,
   ] = await Promise.all([
     getBusinessDaysBetween(clampedFrom, clampedTo),
     getRevenueEntriesBetween(clampedFrom, clampedTo),
@@ -247,6 +257,14 @@ export default async function ReportsPage({
     isManagerOrAbove
       ? getPartnerTransactionsBetween(clampedFrom, clampedTo)
       : Promise.resolve([]),
+    // Booking room revenue + tourism tax whose nights fall in the range
+    // (bookings brief §4). Room revenue joins the revenue total as its own
+    // source; tourism tax is a liability shown separately, never in revenue.
+    sumBookingNightsBetween(clampedFrom, clampedTo),
+    // Bookings arriving in the range, for the guests-by-nationality breakdown.
+    getBookingsByCheckInBetween(clampedFrom, clampedTo),
+    // Bookings cancelled / no-show in the range, for the cancellations report.
+    getBookingsCancelledBetween(clampedFrom, clampedTo),
   ]);
 
   const nightDays = allDays.map((d) => toNightDayDoc(d as Record<string, unknown>));
@@ -261,7 +279,31 @@ export default async function ReportsPage({
   const categoryNameById = new Map(allCategories.map((c) => [c._id.toString(), c.name]));
   const paymentMethodTypeById = new Map(paymentMethods.map((m) => [m._id.toString(), m.type]));
 
-  const revSummary = revenueBySource(nightDays, standaloneRevenue, categoryNameById);
+  const cancellations = cancellationSummary(
+    cancelledBookings.map((b) => {
+      const c = (b.cancellation as Record<string, unknown>) ?? {};
+      return {
+        status: String(b.status ?? ""),
+        bookingValueSen: Number(c.bookingValueSen) || 0,
+        forfeitedSen: Number(c.forfeitedSen) || 0,
+      };
+    }),
+  );
+
+  const revSummary = revenueBySource(
+    nightDays,
+    standaloneRevenue,
+    categoryNameById,
+    bookingAccrual.roomRevenueSen,
+    cancellations.depositsForfeitedSen,
+  );
+
+  const nationalities = guestsByNationality(
+    arrivingBookings.map((b) => ({
+      nationality: String(b.nationality ?? ""),
+      status: String(b.status ?? ""),
+    })),
+  );
   const expSummary = expensesByCategory(nightDays, standaloneExpenses, categoryNameById);
 
   // Net profit — owner only (rule: manager must not see it)
@@ -426,6 +468,25 @@ export default async function ReportsPage({
         )}
       </section>
 
+      {/* Tourism tax collected — a liability to remit, never revenue (bookings
+          brief §1). Only shown when there is some in the period. */}
+      {bookingAccrual.tourismTaxSen > 0 ? (
+        <section className="flex flex-col gap-1">
+          <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>
+            Tourism tax collected
+          </h2>
+          <p style={{ fontSize: "var(--text-label)" }}>
+            <span className="money" style={{ fontWeight: 600 }}>
+              RM {fromSen(bookingAccrual.tourismTaxSen)}
+            </span>{" "}
+            <span style={{ color: "var(--text-muted)" }}>
+              collected from bookings this period — a liability held on behalf of the
+              government, to be remitted. Not counted in revenue.
+            </span>
+          </p>
+        </section>
+      ) : null}
+
       {/* Expenses by category */}
       <section className="flex flex-col gap-3">
         <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>Expenses by category</h2>
@@ -492,6 +553,79 @@ export default async function ReportsPage({
                     prefix={variant === "money" ? "RM " : ""}
                     suffix={variant === "percent" ? "%" : ""}
                   />
+                </span>
+              </Card>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {/* Guests by nationality — which markets you actually serve. Counts one
+          per booking arriving in the period, excluding cancelled/no-show. */}
+      {nationalities.length > 0 ? (
+        <section className="flex flex-col gap-3">
+          <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>
+            Guests by nationality
+          </h2>
+          <div className="flex flex-col gap-2">
+            {nationalities.map((n) => {
+              const pct =
+                nationalities[0].count > 0
+                  ? Math.round((n.count / nationalities[0].count) * 100)
+                  : 0;
+              return (
+                <div
+                  key={n.code}
+                  className="flex items-center gap-2"
+                  style={{ fontSize: "var(--text-label)" }}
+                >
+                  <span style={{ width: 180, minWidth: 120, flexShrink: 0 }}>{n.name}</span>
+                  <div className="bar-track" style={{ flex: 1, height: 20 }}>
+                    <GrowBar pct={pct} className="bar-fill bar-fill-neutral" style={{ height: 20 }} />
+                  </div>
+                  <span className="money" style={{ width: 110, flexShrink: 0 }}>
+                    {n.count}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      {/* Cancellations & no-shows */}
+      {cancellations.cancelledCount + cancellations.noShowCount > 0 ? (
+        <section className="flex flex-col gap-3">
+          <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>
+            Cancellations &amp; no-shows
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {[
+              {
+                label: "Cancelled",
+                sub: `${cancellations.cancelledCount} booking${cancellations.cancelledCount === 1 ? "" : "s"}`,
+                value: cancellations.cancelledValueSen,
+              },
+              {
+                label: "No-shows",
+                sub: `${cancellations.noShowCount} booking${cancellations.noShowCount === 1 ? "" : "s"}`,
+                value: cancellations.noShowValueSen,
+              },
+              {
+                label: "Deposits forfeited",
+                sub: "recognised as revenue",
+                value: cancellations.depositsForfeitedSen,
+              },
+            ].map(({ label, sub, value }, i) => (
+              <Card key={label} tone="neutral" animate delayMs={i * 40} className="flex flex-col gap-1 p-4">
+                <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>
+                  {label}
+                </span>
+                <span className="money" style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>
+                  RM {fromSen(value)}
+                </span>
+                <span style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}>
+                  {sub}
                 </span>
               </Card>
             ))}

@@ -480,6 +480,7 @@ export default function NightReportForm({
   expenseCategoryNames,
   otaPlatforms,
   existingDates,
+  bookingAccrualByDate,
 }: {
   date: string;
   currentDate: string;
@@ -495,6 +496,15 @@ export default function NightReportForm({
   /** Dates that already have a report — picking one shows a notice instead of
    * a blank form that would fail the unique index on submit. */
   existingDates: string[];
+  /** Booking accrual per business date (rooms + roomRevenue + tourism tax whose
+   * nights fall on that date). Shown read-only in the room-revenue box so
+   * reception never retypes a booking's revenue — it is NOT added to the stored
+   * rooms.revenueSen, the revenue gap, or the cash drawer (booking money is
+   * tracked in the bookings ledger). See the bookings brief §4. */
+  bookingAccrualByDate: Record<
+    string,
+    { roomsCount: number; roomRevenueSen: number; tourismTaxSen: number }
+  >;
 }) {
   const router = useRouter();
   const [date, setDate] = useState(initialDate);
@@ -634,6 +644,19 @@ export default function NightReportForm({
       ),
     };
   }, [state, varianceThresholdSen, revenueGapThresholdSen]);
+
+  // Booking accrual for the selected date — read-only, from the bookings
+  // ledger. Shown so reception doesn't retype a booking's revenue; NOT part of
+  // derived.roomRevenueSen (what gets stored), the revenue gap, or the drawer.
+  const bookingAccrual = bookingAccrualByDate[date] ?? {
+    roomsCount: 0,
+    roomRevenueSen: 0,
+    tourismTaxSen: 0,
+  };
+  const hasBookingAccrual =
+    bookingAccrual.roomRevenueSen > 0 || bookingAccrual.tourismTaxSen > 0;
+  const grandRoomRevenueSen =
+    derived.roomRevenueSen + bookingAccrual.roomRevenueSen;
 
   const set = (updater: (s: FormState) => FormState) =>
     setState((s) => updater(structuredClone(s)));
@@ -997,16 +1020,52 @@ export default function NightReportForm({
                       {formatRM(derived.otaRoomRevenueSen)}
                     </span>
                   </div>
+                  {hasBookingAccrual ? (
+                    <div className="flex items-center justify-between" style={{ fontSize: "var(--text-label)" }}>
+                      <span style={{ color: "var(--text-muted)" }}>
+                        From bookings staying tonight ({bookingAccrual.roomsCount} room
+                        {bookingAccrual.roomsCount === 1 ? "" : "s"})
+                      </span>
+                      <span className="money" style={{ color: "var(--text-muted)" }}>
+                        {formatRM(bookingAccrual.roomRevenueSen)}
+                      </span>
+                    </div>
+                  ) : null}
                   <div
                     className="flex items-center justify-between"
                     style={{ borderTop: "1px solid var(--border)", paddingTop: "var(--space-2)" }}
                   >
-                    <span style={{ fontWeight: 600 }}>Total room revenue</span>
+                    <span style={{ fontWeight: 600 }}>
+                      Total room revenue{hasBookingAccrual ? " (incl. bookings)" : ""}
+                    </span>
                     <span className="money" style={{ fontWeight: 600 }}>
-                      {formatRM(derived.roomRevenueSen)}
+                      {formatRM(grandRoomRevenueSen)}
                     </span>
                   </div>
+                  {hasBookingAccrual ? (
+                    <p style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}>
+                      Bookings revenue comes from the booking itself — shown here so you
+                      don&apos;t type it again. Type only walk-in and other direct room
+                      revenue above.
+                    </p>
+                  ) : null}
                 </Card>
+                {hasBookingAccrual && bookingAccrual.tourismTaxSen > 0 ? (
+                  <Card flat className="flex flex-col gap-1 p-3">
+                    <div className="flex items-center justify-between">
+                      <span style={{ fontWeight: 600 }}>
+                        Tourism tax collected (bookings staying tonight)
+                      </span>
+                      <span className="money" style={{ fontWeight: 600 }}>
+                        {formatRM(bookingAccrual.tourismTaxSen)}
+                      </span>
+                    </div>
+                    <p style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}>
+                      A liability collected for the government — not revenue, and not part
+                      of the cash drawer. Remitted separately.
+                    </p>
+                  </Card>
+                ) : null}
                 <p style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}>
                   Occupancy {(derived.occupancy * 100).toFixed(0)}% · ADR{" "}
                   {formatRM(derived.adr)} · RevPAR {formatRM(derived.revpar)}

@@ -29,6 +29,7 @@ export type RouteRequirement = { prefix: string; required?: Role };
 export const ROUTE_REQUIREMENTS: RouteRequirement[] = [
   { prefix: "/owner", required: "owner" },
   { prefix: "/reception" }, // any authenticated role — see layout.tsx
+  { prefix: "/bookings" }, // any authenticated role — reception creates/pays/letters
   { prefix: "/dashboard", required: "manager" },
   { prefix: "/revenue", required: "manager" },
   { prefix: "/expenses", required: "manager" },
@@ -42,6 +43,8 @@ export const ROUTE_REQUIREMENTS: RouteRequirement[] = [
   { prefix: "/settings/categories", required: "manager" },
   { prefix: "/settings/payment-methods", required: "manager" },
   { prefix: "/settings/ota-platforms", required: "manager" },
+  { prefix: "/settings/letter-templates", required: "manager" },
+  { prefix: "/settings/company", required: "owner" },
   { prefix: "/settings/accounts", required: "owner" },
   { prefix: "/settings/users", required: "owner" },
 ];
@@ -76,6 +79,7 @@ export const config = {
   matcher: [
     "/owner/:path*",
     "/reception/:path*",
+    "/bookings/:path*",
     "/dashboard/:path*",
     "/revenue/:path*",
     "/expenses/:path*",

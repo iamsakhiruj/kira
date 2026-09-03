@@ -1,11 +1,14 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser, homeFor } from "@/lib/auth";
+import { getCompanyDetails } from "@/lib/companyDetailsStore";
 import LoginForm from "./login-form";
 
 export default async function LoginPage() {
   // Already signed in? Skip the form.
   const user = await getCurrentUser();
   if (user) redirect(homeFor(user.role));
+
+  const company = await getCompanyDetails();
 
   return (
     <main className="flex min-h-screen items-center justify-center p-4">
@@ -17,7 +20,7 @@ export default async function LoginPage() {
           className="mb-1"
           style={{ fontSize: "var(--text-page-title)", fontWeight: 600 }}
         >
-          Hotel Bintang KL
+          {company.tradingName || "Accounts"}
         </h1>
         <p
           className="mb-6"

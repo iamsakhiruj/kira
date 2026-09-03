@@ -7,6 +7,7 @@
 
 import { combinedTotalSen } from "./reporting";
 import { isLateSubmission } from "./businessDate";
+import { countryName } from "./countries";
 import {
   totalRevenueSen,
   occupancyRatio as calcOccupancyRatio,
@@ -74,12 +75,31 @@ export function revenueBySource(
   nightDays: NightDayDoc[],
   standaloneRevenue: StandaloneEntry[],
   categoryNameById: Map<string, string>,
+  /**
+   * Booking room revenue whose nights fall in the range (from bookingNights,
+   * bookings brief §4). A THIRD independent revenue source, disjoint from the
+   * night report's rooms.revenueSen (which is walk-in + OTA only and never
+   * absorbs booking accrual) and from standalone entries — so summing it here
+   * adds each source exactly once, no double count. Tourism tax is a liability
+   * and is deliberately NOT included in revenue.
+   */
+  bookingRoomRevenueSen = 0,
+  /**
+   * Forfeited booking deposits recognised as revenue this period (bookings
+   * cancellation). A booking-derived, NON-cash revenue source (rule 3: revenue
+   * ≠ cash — the deposit cash was already banked), disjoint from every other
+   * source, so it's counted exactly once.
+   */
+  cancellationFeesSen = 0,
 ): { sources: { name: string; amountSen: number }[]; totalSen: number } {
   // Per-day night totals for combinedTotalSen
   const nightRevenuePerDay = nightDays.map((d) =>
     totalRevenueSen(d.rooms.revenueSen, d.revenueLines),
   );
-  const totalSen = combinedTotalSen(nightRevenuePerDay, standaloneRevenue);
+  const totalSen =
+    combinedTotalSen(nightRevenuePerDay, standaloneRevenue) +
+    bookingRoomRevenueSen +
+    cancellationFeesSen;
 
   // Break down by source — accumulate into a map
   const map = new Map<string, number>();
@@ -93,6 +113,20 @@ export function revenueBySource(
         map.set(line.category, (map.get(line.category) ?? 0) + line.amountSen);
       }
     }
+  }
+
+  if (bookingRoomRevenueSen > 0) {
+    map.set(
+      "Rooms — bookings",
+      (map.get("Rooms — bookings") ?? 0) + bookingRoomRevenueSen,
+    );
+  }
+
+  if (cancellationFeesSen > 0) {
+    map.set(
+      "Cancellation fees",
+      (map.get("Cancellation fees") ?? 0) + cancellationFeesSen,
+    );
   }
 
   for (const entry of standaloneRevenue) {
@@ -155,6 +189,86 @@ export function expensesByCategory(
 
 export function netProfitSen(revenueTotal: number, expenseTotal: number): number {
   return revenueTotal - expenseTotal;
+}
+
+// ---------------------------------------------------------------------------
+// Cancellations & no-shows
+// ---------------------------------------------------------------------------
+
+export interface CancellationSummary {
+  cancelledCount: number;
+  cancelledValueSen: number;
+  noShowCount: number;
+  noShowValueSen: number;
+  /** Deposits kept (forfeited) across both — becomes revenue. */
+  depositsForfeitedSen: number;
+}
+
+/**
+ * Cancellations and no-shows for the period: how many, the value lost (the
+ * booking's worth before it was cancelled), and total deposits forfeited.
+ * No-shows are counted separately from cancellations (different status).
+ */
+export function cancellationSummary(
+  bookings: { status: string; bookingValueSen: number; forfeitedSen: number }[],
+): CancellationSummary {
+  let cancelledCount = 0;
+  let cancelledValueSen = 0;
+  let noShowCount = 0;
+  let noShowValueSen = 0;
+  let depositsForfeitedSen = 0;
+  for (const b of bookings) {
+    depositsForfeitedSen += b.forfeitedSen;
+    if (b.status === "no_show") {
+      noShowCount += 1;
+      noShowValueSen += b.bookingValueSen;
+    } else {
+      cancelledCount += 1;
+      cancelledValueSen += b.bookingValueSen;
+    }
+  }
+  return {
+    cancelledCount,
+    cancelledValueSen,
+    noShowCount,
+    noShowValueSen,
+    depositsForfeitedSen,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Guests by nationality
+// ---------------------------------------------------------------------------
+
+export interface NationalityCount {
+  code: string;
+  name: string;
+  count: number;
+}
+
+/**
+ * Bookings grouped by guest nationality (which markets you serve). Counts one
+ * per booking — a booking is one guest party — and excludes cancelled/no-show,
+ * which aren't guests actually served. Nationality is a stored ISO code;
+ * resolved to a display name here. A missing/legacy value groups as "Unknown".
+ * Sorted by count desc, then name.
+ */
+export function guestsByNationality(
+  bookings: { nationality: string; status: string }[],
+): NationalityCount[] {
+  const map = new Map<string, number>();
+  for (const b of bookings) {
+    if (b.status === "cancelled" || b.status === "no_show") continue;
+    const code = (b.nationality ?? "").trim() || "unknown";
+    map.set(code, (map.get(code) ?? 0) + 1);
+  }
+  return Array.from(map.entries())
+    .map(([code, count]) => ({
+      code,
+      name: code === "unknown" ? "Unknown" : countryName(code),
+      count,
+    }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
 // ---------------------------------------------------------------------------

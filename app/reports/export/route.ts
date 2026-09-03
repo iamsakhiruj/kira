@@ -4,6 +4,11 @@ import { isAuthorized } from "@/lib/session";
 import { getSettings } from "@/lib/settings";
 import { businessDateFor } from "@/lib/businessDate";
 import { getBusinessDaysBetween } from "@/lib/businessDays";
+import {
+  sumBookingNightsBetween,
+  getBookingsByCheckInBetween,
+  getBookingsCancelledBetween,
+} from "@/lib/bookingsStore";
 import { getRevenueEntriesBetween } from "@/lib/revenueEntriesStore";
 import { getExpensesBetween } from "@/lib/expensesStore";
 import { getAllCategories } from "@/lib/categoriesStore";
@@ -12,6 +17,8 @@ import {
   revenueBySource,
   expensesByCategory,
   netProfitSen,
+  guestsByNationality,
+  cancellationSummary,
   type NightDayDoc,
   type StandaloneEntry,
 } from "@/lib/reportSummary";
@@ -87,13 +94,36 @@ export async function GET(req: NextRequest) {
   const clampedFrom = rangeFrom <= rangeTo ? rangeFrom : rangeTo;
   const clampedTo = rangeFrom <= rangeTo ? rangeTo : rangeFrom;
 
-  const [allDays, revenueEntries, expenses, revCats, expCats] = await Promise.all([
-    getBusinessDaysBetween(clampedFrom, clampedTo),
-    getRevenueEntriesBetween(clampedFrom, clampedTo),
-    getExpensesBetween(clampedFrom, clampedTo),
-    getAllCategories("revenue"),
-    getAllCategories("expense"),
-  ]);
+  const [
+    allDays,
+    revenueEntries,
+    expenses,
+    revCats,
+    expCats,
+    bookingAccrual,
+    arrivingBookings,
+    cancelledBookings,
+  ] = await Promise.all([
+      getBusinessDaysBetween(clampedFrom, clampedTo),
+      getRevenueEntriesBetween(clampedFrom, clampedTo),
+      getExpensesBetween(clampedFrom, clampedTo),
+      getAllCategories("revenue"),
+      getAllCategories("expense"),
+      sumBookingNightsBetween(clampedFrom, clampedTo),
+      getBookingsByCheckInBetween(clampedFrom, clampedTo),
+      getBookingsCancelledBetween(clampedFrom, clampedTo),
+    ]);
+
+  const cancellations = cancellationSummary(
+    cancelledBookings.map((b) => {
+      const c = (b.cancellation as Record<string, unknown>) ?? {};
+      return {
+        status: String(b.status ?? ""),
+        bookingValueSen: Number(c.bookingValueSen) || 0,
+        forfeitedSen: Number(c.forfeitedSen) || 0,
+      };
+    }),
+  );
 
   const nightDays = allDays.map((d) => toNightDayDoc(d as Record<string, unknown>));
   const standaloneRevenue = revenueEntries.map((e) =>
@@ -106,7 +136,13 @@ export async function GET(req: NextRequest) {
   const allCategories = [...revCats, ...expCats];
   const categoryNameById = new Map(allCategories.map((c) => [c._id.toString(), c.name]));
 
-  const revSummary = revenueBySource(nightDays, standaloneRevenue, categoryNameById);
+  const revSummary = revenueBySource(
+    nightDays,
+    standaloneRevenue,
+    categoryNameById,
+    bookingAccrual.roomRevenueSen,
+    cancellations.depositsForfeitedSen,
+  );
   const expSummary = expensesByCategory(nightDays, standaloneExpenses, categoryNameById);
 
   let csv = "";
@@ -126,6 +162,45 @@ export async function GET(req: NextRequest) {
     csv += row("Expenses", c.name, fromSen(c.amountSen));
   }
   csv += row("Expenses", "Total", fromSen(expSummary.totalSen));
+
+  // Tourism tax collected — a liability to remit, never revenue (bookings §1).
+  if (bookingAccrual.tourismTaxSen > 0) {
+    csv += row("Tourism tax collected", "", fromSen(bookingAccrual.tourismTaxSen));
+  }
+
+  // Guests by nationality — count per market for the period.
+  const nationalities = guestsByNationality(
+    arrivingBookings.map((b) => ({
+      nationality: String(b.nationality ?? ""),
+      status: String(b.status ?? ""),
+    })),
+  );
+  if (nationalities.length > 0) {
+    csv += row("Guests by nationality", "", "");
+    for (const n of nationalities) {
+      csv += row("Guests by nationality", n.name, String(n.count));
+    }
+  }
+
+  // Cancellations & no-shows — count, value, deposits forfeited.
+  if (cancellations.cancelledCount + cancellations.noShowCount > 0) {
+    csv += row("Cancellations & no-shows", "", "");
+    csv += row(
+      "Cancellations & no-shows",
+      `Cancelled (${cancellations.cancelledCount})`,
+      fromSen(cancellations.cancelledValueSen),
+    );
+    csv += row(
+      "Cancellations & no-shows",
+      `No-shows (${cancellations.noShowCount})`,
+      fromSen(cancellations.noShowValueSen),
+    );
+    csv += row(
+      "Cancellations & no-shows",
+      "Deposits forfeited",
+      fromSen(cancellations.depositsForfeitedSen),
+    );
+  }
 
   // Net profit — owner only
   if (isAuthorized(user.role, "owner")) {
