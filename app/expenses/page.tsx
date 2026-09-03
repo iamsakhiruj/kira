@@ -17,7 +17,12 @@ import ExpensesManager from "./expenses-manager";
 // Depends on request-time data; never prerender.
 export const dynamic = "force-dynamic";
 
-export default async function ExpensesPage() {
+export default async function ExpensesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ deleted?: string }>;
+}) {
+  const showDeleted = (await searchParams).deleted === "1";
   const settings = await getSettings();
   const currentDate = businessDateFor(new Date(), settings.cutoffHour);
 
@@ -32,7 +37,7 @@ export default async function ExpensesPage() {
   const [categories, methods, expenses] = await Promise.all([
     getActiveCategories("expense"),
     getPaymentMethods(),
-    getRecentExpenses(),
+    getRecentExpenses(200, showDeleted),
   ]);
   const activeMethods = methods.filter((m) => m.active);
 
@@ -48,16 +53,24 @@ export default async function ExpensesPage() {
       />
       <ExpensesManager
         currentDate={currentDate}
+        showDeleted={showDeleted}
         categories={categories.map((c) => ({ id: c._id.toString(), name: c.name }))}
         paymentMethods={activeMethods.map((m) => ({ id: m._id.toString(), name: m.name }))}
         expenses={expenses.map((e) => ({
           id: e._id.toString(),
           date: e.date,
+          categoryId: e.categoryId,
           categoryName: categoryNameById.get(e.categoryId) ?? "Unknown",
           amountSen: e.amountSen,
+          paymentMethodId: e.paymentMethodId,
           paymentMethodName: methodNameById.get(e.paymentMethodId) ?? "Unknown",
           paidTo: e.paidTo,
           capitalOrOperating: e.capitalOrOperating,
+          reference: e.reference ?? "",
+          note: e.note ?? "",
+          receiptUrl: e.receiptUrl ?? "",
+          deleted: e.deleted === true,
+          deletedReason: e.deletedReason ?? "",
         }))}
       />
     </div>

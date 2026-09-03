@@ -103,6 +103,12 @@ export const PartnerTransactionSchema = z.object({
   note: z.string().max(2000).default(""),
   recordedBy: z.string().min(1),
   recordedAt: z.date(),
+  // Soft delete — never a hard removal (breaks the audit trail and silently
+  // changes past balances/reports). Server-set.
+  deleted: z.boolean().optional(),
+  deletedReason: z.string().optional(),
+  deletedBy: z.string().optional(),
+  deletedAt: z.date().optional(),
 });
 export type PartnerTransaction = z.infer<typeof PartnerTransactionSchema>;
 

@@ -6,6 +6,8 @@ import { OtaRemittanceInputSchema } from "@/lib/otaRemittances";
 import {
   ensureOtaRemittancesIndexes,
   recordRemittance,
+  updateRemittance,
+  softDeleteRemittance,
 } from "@/lib/otaRemittancesStore";
 import { getActiveCategories } from "@/lib/categoriesStore";
 import { createExpense } from "@/lib/expensesStore";
@@ -22,6 +24,34 @@ export async function recordOtaRemittance(input: unknown): Promise<ActionResult>
 
   await ensureOtaRemittancesIndexes();
   await recordRemittance(parsed.data, { id: user.sub, role: user.role });
+  return { ok: true };
+}
+
+/** Edit a remittance (manager+). Any field; full audit; the amount moves the
+ * platform's outstanding and account balances (computed on read). */
+export async function editOtaRemittance(
+  id: string,
+  input: unknown,
+): Promise<ActionResult> {
+  const user = await requireUser("manager");
+  const parsed = OtaRemittanceInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the form." };
+  }
+  const after = await updateRemittance(id, parsed.data, { id: user.sub, role: user.role });
+  if (!after) return { ok: false, error: "That remittance no longer exists or was deleted." };
+  return { ok: true };
+}
+
+/** Soft-delete a remittance (manager+). Required reason; never a hard removal. */
+export async function deleteOtaRemittance(
+  id: string,
+  reason: string,
+): Promise<ActionResult> {
+  const user = await requireUser("manager");
+  if (!reason.trim()) return { ok: false, error: "Enter a reason for deleting this remittance." };
+  const after = await softDeleteRemittance(id, reason.trim(), { id: user.sub, role: user.role });
+  if (!after) return { ok: false, error: "That remittance no longer exists or was already deleted." };
   return { ok: true };
 }
 

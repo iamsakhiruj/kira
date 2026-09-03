@@ -31,8 +31,13 @@ const klDate = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 });
 
-export default async function PartnersPage() {
+export default async function PartnersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ deleted?: string }>;
+}) {
   await requireUser("owner");
+  const showDeleted = (await searchParams).deleted === "1";
 
   await Promise.all([
     ensurePartnerIndexes(),
@@ -45,7 +50,7 @@ export default async function PartnersPage() {
     await Promise.all([
       listPartners(),
       getAllShares(),
-      getRecentTransactions(),
+      getRecentTransactions(200, showDeleted),
       getPartnerBalances(),
       getPaymentMethods(),
     ]);
@@ -126,14 +131,18 @@ export default async function PartnersPage() {
 
   const txnData = transactions.map((t) => ({
     id: t._id.toString(),
+    partnerId: t.partnerId,
     partnerName: partnerNames.get(t.partnerId) ?? "(unknown)",
     date: t.date,
     amountSen: t.amountSen,
     direction: t.direction,
     purpose: t.purpose,
+    paymentMethodId: t.paymentMethodId,
     paymentMethodName: methodNames.get(t.paymentMethodId) ?? "—",
     reference: t.reference,
     note: t.note,
+    deleted: t.deleted === true,
+    deletedReason: t.deletedReason ?? "",
   }));
 
   const activeMethods = paymentMethods
@@ -163,6 +172,7 @@ export default async function PartnersPage() {
         transactions={txnData}
         paymentMethods={activeMethods}
         today={today}
+        showDeleted={showDeleted}
       />
     </div>
   );

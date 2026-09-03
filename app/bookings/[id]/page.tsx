@@ -93,6 +93,7 @@ export default async function BookingDetailPage({
         date: String(p.date),
         amountSen: Number(p.amountSen) || 0,
         type: p.type as PaymentType,
+        paymentMethodId: String(p.paymentMethodId ?? ""),
         methodName: methodNameById.get(String(p.paymentMethodId)) ?? "Unknown",
         reference: String(p.reference ?? ""),
         note: String(p.note ?? ""),

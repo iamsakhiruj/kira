@@ -3,7 +3,7 @@
  * for why the schema lives in a separate, pure file.
  */
 
-import { type Collection, type Document, type WithId } from "mongodb";
+import { ObjectId, type Collection, type Document, type WithId } from "mongodb";
 import { z } from "zod";
 import { getDb } from "./mongodb";
 import { recordAudit } from "./audit";
@@ -17,6 +17,10 @@ async function collection(): Promise<Collection<Document>> {
   return db.collection("revenueEntries");
 }
 
+/** Excludes soft-deleted entries. Every balance/report query uses this so a
+ * deleted entry stops counting the moment it's deleted. */
+const NOT_DELETED = { deleted: { $ne: true } };
+
 export async function ensureRevenueEntriesIndexes(): Promise<void> {
   const col = await collection();
   await col.createIndex({ date: -1 });
@@ -25,35 +29,50 @@ export async function ensureRevenueEntriesIndexes(): Promise<void> {
 
 const RECENT_LIMIT = 200;
 
-/** Most recent standalone revenue entries, newest first. */
+/** Most recent standalone revenue entries, newest first. Excludes soft-deleted
+ * unless includeDeleted is set (the list's "show deleted" toggle). */
 export async function getRecentRevenueEntries(
   limit: number = RECENT_LIMIT,
+  includeDeleted = false,
 ): Promise<StoredRevenueEntry[]> {
   const col = await collection();
-  const docs = await col.find({}).sort({ date: -1 }).limit(limit).toArray();
+  const docs = await col
+    .find(includeDeleted ? {} : NOT_DELETED)
+    .sort({ date: -1 })
+    .limit(limit)
+    .toArray();
   return docs as StoredRevenueEntry[];
 }
 
+export async function getRevenueEntryById(
+  id: string,
+): Promise<StoredRevenueEntry | null> {
+  if (!ObjectId.isValid(id)) return null;
+  const col = await collection();
+  return col.findOne({ _id: new ObjectId(id) }) as Promise<StoredRevenueEntry | null>;
+}
+
 /** Standalone revenue entries in a calendar month ("YYYY-MM"). Lexicographic
- * range on the indexed `date` string. */
+ * range on the indexed `date` string. Excludes soft-deleted. */
 export async function getRevenueEntriesForMonth(
   month: string,
 ): Promise<StoredRevenueEntry[]> {
   const col = await collection();
   const docs = await col
-    .find({ date: { $gte: `${month}-01`, $lte: `${month}-31` } })
+    .find({ date: { $gte: `${month}-01`, $lte: `${month}-31` }, ...NOT_DELETED })
     .toArray();
   return docs as StoredRevenueEntry[];
 }
 
-/** Standalone revenue entries between two dates (inclusive). */
+/** Standalone revenue entries between two dates (inclusive). Excludes
+ * soft-deleted — so balances and reports never count a deleted entry. */
 export async function getRevenueEntriesBetween(
   fromDate: string,
   toDate: string,
 ): Promise<StoredRevenueEntry[]> {
   const col = await collection();
   const docs = await col
-    .find({ date: { $gte: fromDate, $lte: toDate } })
+    .find({ date: { $gte: fromDate, $lte: toDate }, ...NOT_DELETED })
     .toArray();
   return docs as StoredRevenueEntry[];
 }
@@ -81,4 +100,79 @@ export async function createRevenueEntry(
   });
 
   return res.insertedId.toString();
+}
+
+/** Edit an entry's fields. Editing the amount moves any account balance the
+ * entry affects, because balances are computed on read from these documents.
+ * Full before/after audit. Returns the updated doc, or null if it's gone or
+ * already deleted (a deleted entry can't be edited). */
+export async function updateRevenueEntry(
+  id: string,
+  input: z.infer<typeof RevenueEntryInputSchema>,
+  actor: { id: string; role: Role },
+): Promise<StoredRevenueEntry | null> {
+  if (!ObjectId.isValid(id)) return null;
+  const col = await collection();
+  const _id = new ObjectId(id);
+  const before = await col.findOne({ _id });
+  if (!before || before.deleted === true) return null;
+
+  const after = (await col.findOneAndUpdate(
+    { _id, deleted: { $ne: true } },
+    { $set: { ...input } },
+    { returnDocument: "after" },
+  )) as StoredRevenueEntry | null;
+  if (!after) return null;
+
+  await recordAudit({
+    actorId: actor.id,
+    actorRole: actor.role,
+    action: "update",
+    collection: "revenueEntries",
+    documentId: id,
+    before,
+    after,
+  });
+  return after;
+}
+
+/** Soft-delete: never a hard removal. The document stays (audit trail intact,
+ * past reports reproducible); it's just excluded from balances/reports and
+ * hidden from the list by default. A reason is required. */
+export async function softDeleteRevenueEntry(
+  id: string,
+  reason: string,
+  actor: { id: string; role: Role },
+): Promise<StoredRevenueEntry | null> {
+  if (!ObjectId.isValid(id)) return null;
+  const col = await collection();
+  const _id = new ObjectId(id);
+  const before = await col.findOne({ _id });
+  if (!before || before.deleted === true) return null;
+
+  const after = (await col.findOneAndUpdate(
+    { _id, deleted: { $ne: true } },
+    {
+      $set: {
+        deleted: true,
+        deletedReason: reason,
+        deletedBy: actor.id,
+        deletedAt: new Date(),
+      },
+    },
+    { returnDocument: "after" },
+  )) as StoredRevenueEntry | null;
+  if (!after) return null;
+
+  await recordAudit({
+    actorId: actor.id,
+    actorRole: actor.role,
+    action: "delete",
+    collection: "revenueEntries",
+    documentId: id,
+    before,
+    after,
+    reason,
+  });
+  return after;
 }

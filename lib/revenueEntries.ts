@@ -26,6 +26,13 @@ export const RevenueEntrySchema = z.object({
   linkedBusinessDayId: z.string().nullable(),
   /** User id, set server-side from the session. */
   recordedBy: z.string().min(1),
+  // Soft delete — a hard removal would break the audit trail and silently
+  // change past reports. Deleted entries stay in the database, excluded from
+  // balances/reports and hidden from the list by default. Server-set.
+  deleted: z.boolean().optional(),
+  deletedReason: z.string().optional(),
+  deletedBy: z.string().optional(),
+  deletedAt: z.date().optional(),
 });
 
 export type RevenueEntry = z.infer<typeof RevenueEntrySchema>;

@@ -27,6 +27,10 @@ async function collection(): Promise<Collection<Document>> {
   return (await getDb()).collection("bookingPayments");
 }
 
+/** Excludes soft-deleted payments — so outstanding balance and deposit-held
+ * calculations never count a deleted payment. */
+const NOT_DELETED = { deleted: { $ne: true } };
+
 export async function ensureBookingPaymentIndexes(): Promise<void> {
   const col = await collection();
   await col.createIndex({ bookingId: 1, date: 1 });
@@ -62,22 +66,114 @@ export async function createBookingPayment(
   return res.insertedId.toString();
 }
 
-/** Payments for one booking, oldest first. */
+/** Payments for one booking, oldest first. Excludes soft-deleted unless
+ * includeDeleted is set (the detail screen's "show deleted" toggle). */
 export async function getPaymentsForBooking(
   bookingId: string,
+  includeDeleted = false,
 ): Promise<StoredBookingPayment[]> {
   const col = await collection();
-  return col.find({ bookingId }).sort({ date: 1 }).toArray();
+  const filter = includeDeleted ? { bookingId } : { bookingId, ...NOT_DELETED };
+  return col.find(filter).sort({ date: 1 }).toArray();
 }
 
 /** Payments for several bookings at once — for the list screen's outstanding
- * column, so it isn't one query per row. */
+ * column, so it isn't one query per row. Excludes soft-deleted. */
 export async function getPaymentsForBookings(
   bookingIds: string[],
 ): Promise<StoredBookingPayment[]> {
   if (bookingIds.length === 0) return [];
   const col = await collection();
-  return col.find({ bookingId: { $in: bookingIds } }).toArray();
+  return col.find({ bookingId: { $in: bookingIds }, ...NOT_DELETED }).toArray();
+}
+
+export async function getBookingPaymentById(
+  id: string,
+): Promise<StoredBookingPayment | null> {
+  if (!ObjectId.isValid(id)) return null;
+  const col = await collection();
+  return col.findOne({ _id: new ObjectId(id) });
+}
+
+/** Edit a payment (manager+). Changing the amount/type moves the booking's
+ * outstanding, which is computed on read. Full before/after audit. */
+export async function updateBookingPayment(
+  id: string,
+  input: BookingPaymentInput,
+  actor: { id: string; role: Role },
+): Promise<StoredBookingPayment | null> {
+  if (!ObjectId.isValid(id)) return null;
+  const col = await collection();
+  const _id = new ObjectId(id);
+  const before = await col.findOne({ _id });
+  if (!before || before.deleted === true) return null;
+
+  const after = await col.findOneAndUpdate(
+    { _id, deleted: { $ne: true } },
+    {
+      $set: {
+        date: input.date,
+        amountSen: input.amountSen,
+        paymentMethodId: input.paymentMethodId,
+        type: input.type,
+        reference: input.reference,
+        note: input.note,
+      },
+    },
+    { returnDocument: "after" },
+  );
+  if (!after) return null;
+
+  await recordAudit({
+    actorId: actor.id,
+    actorRole: actor.role,
+    action: "update",
+    collection: "bookingPayments",
+    documentId: id,
+    before,
+    after,
+  });
+  return after;
+}
+
+/** Soft-delete a payment: never a hard removal (a deleted deposit would be
+ * orphaned). Required reason; excluded from outstanding, hidden by default. */
+export async function softDeleteBookingPayment(
+  id: string,
+  reason: string,
+  actor: { id: string; role: Role },
+): Promise<StoredBookingPayment | null> {
+  if (!ObjectId.isValid(id)) return null;
+  const col = await collection();
+  const _id = new ObjectId(id);
+  const before = await col.findOne({ _id });
+  if (!before || before.deleted === true) return null;
+
+  const after = await col.findOneAndUpdate(
+    { _id, deleted: { $ne: true } },
+    {
+      $set: {
+        deleted: true,
+        deletedReason: reason,
+        deletedBy: actor.id,
+        deletedAt: new Date(),
+      },
+    },
+    { returnDocument: "after" },
+  );
+  if (!after) return null;
+
+  await recordAudit({
+    actorId: actor.id,
+    actorRole: actor.role,
+    action: "delete",
+    collection: "bookingPayments",
+    documentId: id,
+    before,
+    after,
+    reason,
+  });
+  return after;
 }
 
 export { ObjectId };

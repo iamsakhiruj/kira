@@ -1,12 +1,34 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toSen, fromSen, formatRM } from "@/lib/money";
 import { commissionShortfallSen } from "@/lib/otaSummary";
 import FormPanel from "@/components/ui/form-panel";
 import DataTable from "@/components/ui/data-table";
-import { recordOtaRemittance, recordOtaCommissionExpense } from "./actions";
+import Badge from "@/components/ui/badge";
+import {
+  recordOtaRemittance,
+  recordOtaCommissionExpense,
+  editOtaRemittance,
+  deleteOtaRemittance,
+} from "./actions";
+
+interface Remittance {
+  id: string;
+  platformId: string;
+  platformName: string;
+  date: string;
+  amountReceivedSen: number;
+  outstandingCoveredSen: number;
+  paymentMethodId: string;
+  paymentMethodName: string;
+  reference: string;
+  note: string;
+  deleted: boolean;
+  deletedReason: string;
+}
 
 interface Row {
   platformId: string;
@@ -352,72 +374,254 @@ function RemittanceForm({
 
 export default function OtaClient({
   rows,
+  remittances,
+  showDeleted,
+  activePlatforms,
   paymentMethods,
   today,
 }: {
   rows: Row[];
+  remittances: Remittance[];
+  showDeleted: boolean;
+  activePlatforms: { id: string; name: string }[];
   paymentMethods: { id: string; name: string }[];
   today: string;
 }) {
   const [openRow, setOpenRow] = useState<string | null>(null);
 
   return (
-    <DataTable
-      animate
-      columns={[
-        { key: "platform", header: "Platform" },
-        { key: "bookings", header: "Bookings", align: "right" },
-        { key: "revenue", header: "Revenue booked", align: "right" },
-        { key: "received", header: "Received", align: "right" },
-        { key: "outstanding", header: "Outstanding", align: "right" },
-        { key: "actions", header: "" },
-      ]}
-      isEmpty={rows.length === 0}
-      emptyMessage="No active OTA platforms yet — add one in Settings."
-    >
-      {rows.map((row) => (
-        <Fragment key={row.platformId}>
-          <tr
-            className="table-row-hover"
-            style={{ borderBottom: openRow === row.platformId ? "none" : "1px solid var(--border)" }}
-          >
-            <td className="px-4 py-3">{row.name}</td>
-            <td className="px-4 py-3 money">{row.bookingsCount}</td>
-            <td className="px-4 py-3 money">{formatRM(row.revenueBookedSen)}</td>
-            <td className="px-4 py-3 money">{formatRM(row.receivedSen)}</td>
-            <td
-              className="px-4 py-3 money"
-              style={{
-                fontWeight: 600,
-                color: row.outstandingSen > 0 ? "var(--warn)" : undefined,
-              }}
+    <div className="flex flex-col gap-6">
+      <DataTable
+        animate
+        columns={[
+          { key: "platform", header: "Platform" },
+          { key: "bookings", header: "Bookings", align: "right" },
+          { key: "revenue", header: "Revenue booked", align: "right" },
+          { key: "received", header: "Received", align: "right" },
+          { key: "outstanding", header: "Outstanding", align: "right" },
+          { key: "actions", header: "" },
+        ]}
+        isEmpty={rows.length === 0}
+        emptyMessage="No active OTA platforms yet — add one in Settings."
+      >
+        {rows.map((row) => (
+          <Fragment key={row.platformId}>
+            <tr
+              className="table-row-hover"
+              style={{ borderBottom: openRow === row.platformId ? "none" : "1px solid var(--border)" }}
             >
-              {formatRM(row.outstandingSen)}
-            </td>
-            <td className="px-4 py-3 text-right">
-              <button
-                type="button"
-                onClick={() => setOpenRow(openRow === row.platformId ? null : row.platformId)}
-                style={{ color: "var(--brand)" }}
+              <td className="px-4 py-3">{row.name}</td>
+              <td className="px-4 py-3 money">{row.bookingsCount}</td>
+              <td className="px-4 py-3 money">{formatRM(row.revenueBookedSen)}</td>
+              <td className="px-4 py-3 money">{formatRM(row.receivedSen)}</td>
+              <td
+                className="px-4 py-3 money"
+                style={{
+                  fontWeight: 600,
+                  color: row.outstandingSen > 0 ? "var(--warn)" : undefined,
+                }}
               >
-                {openRow === row.platformId ? "Close" : "Record remittance"}
-              </button>
-            </td>
-          </tr>
-          {openRow === row.platformId ? (
-            <tr style={{ borderBottom: "1px solid var(--border)" }}>
-              <td colSpan={6} className="px-2 pb-3">
-                <RemittanceForm
-                  row={row}
-                  paymentMethods={paymentMethods}
-                  today={today}
-                  onDone={() => setOpenRow(null)}
-                />
+                {formatRM(row.outstandingSen)}
+              </td>
+              <td className="px-4 py-3 text-right">
+                <button
+                  type="button"
+                  onClick={() => setOpenRow(openRow === row.platformId ? null : row.platformId)}
+                  style={{ color: "var(--brand)" }}
+                >
+                  {openRow === row.platformId ? "Close" : "Record remittance"}
+                </button>
               </td>
             </tr>
-          ) : null}
-        </Fragment>
-      ))}
-    </DataTable>
+            {openRow === row.platformId ? (
+              <tr style={{ borderBottom: "1px solid var(--border)" }}>
+                <td colSpan={6} className="px-2 pb-3">
+                  <RemittanceForm
+                    row={row}
+                    paymentMethods={paymentMethods}
+                    today={today}
+                    onDone={() => setOpenRow(null)}
+                  />
+                </td>
+              </tr>
+            ) : null}
+          </Fragment>
+        ))}
+      </DataTable>
+
+      <RemittanceHistory
+        remittances={remittances}
+        activePlatforms={activePlatforms}
+        paymentMethods={paymentMethods}
+        showDeleted={showDeleted}
+      />
+    </div>
+  );
+}
+
+// --- remittance history (edit / soft-delete) ------------------------------
+
+const REMIT_COLS = 6;
+
+function RemitEditRow({ remittance, activePlatforms, paymentMethods, onDone }: {
+  remittance: Remittance;
+  activePlatforms: { id: string; name: string }[];
+  paymentMethods: { id: string; name: string }[];
+  onDone: () => void;
+}) {
+  const router = useRouter();
+  const [platformId, setPlatformId] = useState(remittance.platformId);
+  const [date, setDate] = useState(remittance.date);
+  const [received, setReceived] = useState(fromSen(remittance.amountReceivedSen));
+  const [covered, setCovered] = useState(fromSen(remittance.outstandingCoveredSen));
+  const [methodId, setMethodId] = useState(remittance.paymentMethodId);
+  const [reference, setReference] = useState(remittance.reference);
+  const [note, setNote] = useState(remittance.note);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function save() {
+    setError(null);
+    if (amtInvalid(received) || amtInvalid(covered)) return setError("Enter valid amounts.");
+    setPending(true);
+    const res = await editOtaRemittance(remittance.id, {
+      platformId, date, amountReceivedSen: sen(received), outstandingCoveredSen: sen(covered),
+      paymentMethodId: methodId, reference, note,
+    });
+    setPending(false);
+    if (res.ok) { router.refresh(); onDone(); } else { setError(res.error); }
+  }
+
+  // The platform may be inactive (historical); include it so the select shows it.
+  const platformOptions = activePlatforms.some((p) => p.id === platformId)
+    ? activePlatforms
+    : [{ id: platformId, name: remittance.platformName }, ...activePlatforms];
+
+  return (
+    <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--page)" }}>
+      <td className="px-4 py-3" colSpan={REMIT_COLS}>
+        <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <select aria-label="Edit remittance platform" value={platformId} onChange={(e) => setPlatformId(e.target.value)} className="h-9 rounded border px-2" style={fieldStyle}>
+              {platformOptions.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <input aria-label="Edit remittance date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9 rounded border px-2" style={fieldStyle} />
+            <input aria-label="Edit received" inputMode="decimal" placeholder="Received" value={received} onChange={(e) => setReceived(e.target.value)} className="money h-9 rounded border px-2" style={fieldStyle} />
+            <input aria-label="Edit outstanding covered" inputMode="decimal" placeholder="Outstanding covered" value={covered} onChange={(e) => setCovered(e.target.value)} className="money h-9 rounded border px-2" style={fieldStyle} />
+            <select aria-label="Edit remittance method" value={methodId} onChange={(e) => setMethodId(e.target.value)} className="h-9 rounded border px-2" style={fieldStyle}>
+              {paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+            <input aria-label="Edit remittance reference" placeholder="Reference" value={reference} onChange={(e) => setReference(e.target.value)} className="h-9 rounded border px-2" style={fieldStyle} />
+            <input aria-label="Edit remittance note" placeholder="Note" value={note} onChange={(e) => setNote(e.target.value)} className="h-9 rounded border px-2 sm:col-span-3" style={fieldStyle} />
+          </div>
+          <div className="flex items-center gap-3">
+            <button type="button" disabled={pending} onClick={save} style={{ color: "var(--brand)", fontWeight: 600 }}>{pending ? "Saving…" : "Save"}</button>
+            <button type="button" onClick={onDone} style={{ color: "var(--text-muted)" }}>Cancel</button>
+            {error ? <span style={{ fontSize: "var(--text-caption)", color: "var(--warn)" }}>{error}</span> : null}
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function RemitDeleteRow({ remittance, onDone }: { remittance: Remittance; onDone: () => void }) {
+  const router = useRouter();
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  async function confirm() {
+    setError(null);
+    if (!reason.trim()) return setError("Enter a reason.");
+    setPending(true);
+    const res = await deleteOtaRemittance(remittance.id, reason.trim());
+    setPending(false);
+    if (res.ok) { router.refresh(); onDone(); } else { setError(res.error); }
+  }
+  return (
+    <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--warn-bg)" }}>
+      <td className="px-4 py-3" colSpan={REMIT_COLS}>
+        <div className="flex flex-wrap items-center gap-2">
+          <span style={{ fontSize: "var(--text-label)" }}>Delete this {formatRM(remittance.amountReceivedSen)} remittance? Reason:</span>
+          <input aria-label="Delete remittance reason" value={reason} onChange={(e) => setReason(e.target.value)} className="h-9 flex-1 rounded border px-2" style={{ ...fieldStyle, minWidth: 160 }} />
+          <button type="button" disabled={pending} onClick={confirm} style={{ color: "var(--warn)", fontWeight: 600 }}>{pending ? "Deleting…" : "Confirm delete"}</button>
+          <button type="button" onClick={onDone} style={{ color: "var(--text-muted)" }}>Cancel</button>
+          {error ? <span style={{ fontSize: "var(--text-caption)", color: "var(--warn)" }}>{error}</span> : null}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function RemitRow({ remittance, activePlatforms, paymentMethods }: {
+  remittance: Remittance;
+  activePlatforms: { id: string; name: string }[];
+  paymentMethods: { id: string; name: string }[];
+}) {
+  const [mode, setMode] = useState<"view" | "edit" | "delete">("view");
+  if (mode === "edit") return <RemitEditRow remittance={remittance} activePlatforms={activePlatforms} paymentMethods={paymentMethods} onDone={() => setMode("view")} />;
+  if (mode === "delete") return <RemitDeleteRow remittance={remittance} onDone={() => setMode("view")} />;
+
+  const dim = remittance.deleted ? { opacity: 0.55 } : undefined;
+  return (
+    <tr className="table-row-hover" style={{ borderBottom: "1px solid var(--border)" }}>
+      <td className="px-4 py-3" style={dim}>{remittance.date}</td>
+      <td className="px-4 py-3" style={dim}>{remittance.platformName}</td>
+      <td className="px-4 py-3 money" style={dim}>{formatRM(remittance.amountReceivedSen)}</td>
+      <td className="px-4 py-3" style={dim}>{remittance.paymentMethodName}</td>
+      <td className="px-4 py-3" style={dim}>
+        {remittance.reference || "—"}
+        {remittance.deleted ? (
+          <span className="ml-2 align-middle"><Badge tone="muted">Deleted</Badge>
+            {remittance.deletedReason ? <span style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}> · {remittance.deletedReason}</span> : null}
+          </span>
+        ) : null}
+      </td>
+      <td className="px-4 py-3 text-right">
+        {remittance.deleted ? (
+          <span style={{ color: "var(--text-faint)", fontSize: "var(--text-label)" }}>—</span>
+        ) : (
+          <div className="flex justify-end gap-3">
+            <button type="button" onClick={() => setMode("edit")} style={{ color: "var(--brand)" }}>Edit</button>
+            <button type="button" onClick={() => setMode("delete")} style={{ color: "var(--text-muted)" }}>Delete</button>
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function RemittanceHistory({ remittances, activePlatforms, paymentMethods, showDeleted }: {
+  remittances: Remittance[];
+  activePlatforms: { id: string; name: string }[];
+  paymentMethods: { id: string; name: string }[];
+  showDeleted: boolean;
+}) {
+  const deletedCount = remittances.filter((r) => r.deleted).length;
+  return (
+    <section className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <h2 style={{ fontSize: "var(--text-section)", fontWeight: 600 }}>Remittance history</h2>
+        <Link href={showDeleted ? "/ota" : "/ota?deleted=1"} style={{ fontSize: "var(--text-label)", color: "var(--brand)" }}>
+          {showDeleted ? "Hide deleted" : "Show deleted"}{showDeleted && deletedCount > 0 ? ` (${deletedCount})` : ""}
+        </Link>
+      </div>
+      <DataTable
+        columns={[
+          { key: "date", header: "Date" },
+          { key: "platform", header: "Platform" },
+          { key: "received", header: "Received", align: "right" },
+          { key: "method", header: "Method" },
+          { key: "reference", header: "Reference" },
+          { key: "actions", header: "" },
+        ]}
+        isEmpty={remittances.length === 0}
+        emptyMessage="No remittances recorded yet."
+      >
+        {remittances.map((r) => (
+          <RemitRow key={r.id} remittance={r} activePlatforms={activePlatforms} paymentMethods={paymentMethods} />
+        ))}
+      </DataTable>
+    </section>
   );
 }

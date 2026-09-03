@@ -3,13 +3,20 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { toSen, formatRM } from "@/lib/money";
+import { toSen, fromSen, formatRM } from "@/lib/money";
 import { formatBp } from "@/lib/partners";
 import Badge from "@/components/ui/badge";
 import Card from "@/components/ui/card";
 import FormPanel from "@/components/ui/form-panel";
 import DataTable from "@/components/ui/data-table";
-import { addPartner, editPartner, saveShares, addTransaction } from "./actions";
+import {
+  addPartner,
+  editPartner,
+  saveShares,
+  addTransaction,
+  editTransaction,
+  deleteTransaction,
+} from "./actions";
 
 interface Balance {
   allocatedSen: number;
@@ -48,14 +55,18 @@ interface ShareRow {
 }
 interface Txn {
   id: string;
+  partnerId: string;
   partnerName: string;
   date: string;
   amountSen: number;
   direction: "drawing" | "injection";
   purpose: string;
+  paymentMethodId: string;
   paymentMethodName: string;
   reference: string;
   note: string;
+  deleted: boolean;
+  deletedReason: string;
 }
 interface Method {
   id: string;
@@ -533,48 +544,184 @@ function TransactionForm({
   );
 }
 
-function TransactionsTable({ transactions }: { transactions: Txn[] }) {
+const TXN_COLS = 8;
+
+function TxnEditRow({ txn, partners, methods, onDone }: {
+  txn: Txn;
+  partners: { id: string; name: string; active: boolean }[];
+  methods: Method[];
+  onDone: () => void;
+}) {
+  const router = useRouter();
+  const [partnerId, setPartnerId] = useState(txn.partnerId);
+  const [date, setDate] = useState(txn.date);
+  const [amount, setAmount] = useState(fromSen(txn.amountSen));
+  const [direction, setDirection] = useState<"drawing" | "injection">(txn.direction);
+  const [purpose, setPurpose] = useState(txn.purpose);
+  const [methodId, setMethodId] = useState(txn.paymentMethodId);
+  const [reference, setReference] = useState(txn.reference);
+  const [note, setNote] = useState(txn.note);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function save() {
+    setError(null);
+    let amountSen: number;
+    try { amountSen = toSen(amount); } catch { return setError("Enter a valid amount."); }
+    if (amountSen <= 0) return setError("Enter an amount greater than zero.");
+    setPending(true);
+    const res = await editTransaction(txn.id, {
+      partnerId, date, amountSen, direction, purpose, paymentMethodId: methodId, reference, note,
+    });
+    setPending(false);
+    if (res.ok) { router.refresh(); onDone(); } else { setError(res.error); }
+  }
+
   return (
-    <DataTable
-      delayMs={40}
-      columns={[
-        { key: "date", header: "Date" },
-        { key: "partner", header: "Partner" },
-        { key: "direction", header: "Direction" },
-        { key: "purpose", header: "Purpose" },
-        { key: "amount", header: "Amount", align: "right" },
-        { key: "method", header: "Method" },
-        { key: "reference", header: "Reference" },
-      ]}
-      isEmpty={transactions.length === 0}
-      emptyMessage="No partner transactions yet."
-    >
-      {transactions.map((t) => (
-        <tr key={t.id} className="table-row-hover" style={{ borderBottom: "1px solid var(--border)" }}>
-          <td className="px-4 py-3">{t.date}</td>
-          <td className="px-4 py-3">{t.partnerName}</td>
-          <td className="px-4 py-3">
-            <span className={t.direction === "injection" ? "money-in" : "money-out"}>
-              {t.direction === "injection" ? "In" : "Out"}
-            </span>
-          </td>
-          <td className="px-4 py-3">
-            {PURPOSE_LABELS[t.purpose] ?? t.purpose}
-            {t.purpose === "director_loan" ? (
-              <Badge tone="warn" className="ml-1">s.140B</Badge>
-            ) : null}
-          </td>
-          <td className="px-4 py-3 money">
-            <span className={t.direction === "injection" ? "money-in" : "money-out"}>
-              {t.direction === "injection" ? "" : "−"}
-              {formatRM(t.amountSen)}
-            </span>
-          </td>
-          <td className="px-4 py-3">{t.paymentMethodName}</td>
-          <td className="px-4 py-3">{t.reference || "—"}</td>
-        </tr>
-      ))}
-    </DataTable>
+    <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--page)" }}>
+      <td className="px-4 py-3" colSpan={TXN_COLS}>
+        <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <select aria-label="Edit partner" value={partnerId} onChange={(e) => setPartnerId(e.target.value)} className="h-9 rounded border px-2" style={fieldStyle}>
+              {partners.map((p) => <option key={p.id} value={p.id}>{p.name}{p.active ? "" : " (exited)"}</option>)}
+            </select>
+            <input aria-label="Edit txn date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9 rounded border px-2" style={fieldStyle} />
+            <input aria-label="Edit txn amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className="money h-9 rounded border px-2" style={fieldStyle} />
+            <select aria-label="Edit direction" value={direction} onChange={(e) => setDirection(e.target.value as "drawing" | "injection")} className="h-9 rounded border px-2" style={fieldStyle}>
+              <option value="drawing">Drawing (out)</option>
+              <option value="injection">Injection (in)</option>
+            </select>
+            <select aria-label="Edit purpose" value={purpose} onChange={(e) => setPurpose(e.target.value)} className="h-9 rounded border px-2" style={fieldStyle}>
+              {PURPOSES.map((p) => <option key={p} value={p}>{PURPOSE_LABELS[p]}</option>)}
+            </select>
+            <select aria-label="Edit txn method" value={methodId} onChange={(e) => setMethodId(e.target.value)} className="h-9 rounded border px-2" style={fieldStyle}>
+              {methods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+            <input aria-label="Edit txn reference" placeholder="Reference" value={reference} onChange={(e) => setReference(e.target.value)} className="h-9 rounded border px-2" style={fieldStyle} />
+            <input aria-label="Edit txn note" placeholder="Note" value={note} onChange={(e) => setNote(e.target.value)} className="h-9 rounded border px-2" style={fieldStyle} />
+          </div>
+          <div className="flex items-center gap-3">
+            <button type="button" disabled={pending} onClick={save} style={{ color: "var(--brand)", fontWeight: 600 }}>{pending ? "Saving…" : "Save"}</button>
+            <button type="button" onClick={onDone} style={{ color: "var(--text-muted)" }}>Cancel</button>
+            {error ? <span style={{ fontSize: "var(--text-caption)", color: "var(--warn)" }}>{error}</span> : null}
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function TxnDeleteRow({ txn, onDone }: { txn: Txn; onDone: () => void }) {
+  const router = useRouter();
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  async function confirm() {
+    setError(null);
+    if (!reason.trim()) return setError("Enter a reason.");
+    setPending(true);
+    const res = await deleteTransaction(txn.id, reason.trim());
+    setPending(false);
+    if (res.ok) { router.refresh(); onDone(); } else { setError(res.error); }
+  }
+  return (
+    <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--warn-bg)" }}>
+      <td className="px-4 py-3" colSpan={TXN_COLS}>
+        <div className="flex flex-wrap items-center gap-2">
+          <span style={{ fontSize: "var(--text-label)" }}>Delete this {formatRM(txn.amountSen)} transaction? Reason:</span>
+          <input aria-label="Delete txn reason" value={reason} onChange={(e) => setReason(e.target.value)} className="h-9 flex-1 rounded border px-2" style={{ ...fieldStyle, minWidth: 160 }} />
+          <button type="button" disabled={pending} onClick={confirm} style={{ color: "var(--warn)", fontWeight: 600 }}>{pending ? "Deleting…" : "Confirm delete"}</button>
+          <button type="button" onClick={onDone} style={{ color: "var(--text-muted)" }}>Cancel</button>
+          {error ? <span style={{ fontSize: "var(--text-caption)", color: "var(--warn)" }}>{error}</span> : null}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function TxnRow({ txn, partners, methods }: {
+  txn: Txn;
+  partners: { id: string; name: string; active: boolean }[];
+  methods: Method[];
+}) {
+  const [mode, setMode] = useState<"view" | "edit" | "delete">("view");
+  if (mode === "edit") return <TxnEditRow txn={txn} partners={partners} methods={methods} onDone={() => setMode("view")} />;
+  if (mode === "delete") return <TxnDeleteRow txn={txn} onDone={() => setMode("view")} />;
+
+  const dim = txn.deleted ? { opacity: 0.55 } : undefined;
+  return (
+    <tr className="table-row-hover" style={{ borderBottom: "1px solid var(--border)" }}>
+      <td className="px-4 py-3" style={dim}>{txn.date}</td>
+      <td className="px-4 py-3" style={dim}>{txn.partnerName}</td>
+      <td className="px-4 py-3" style={dim}>
+        <span className={txn.direction === "injection" ? "money-in" : "money-out"}>{txn.direction === "injection" ? "In" : "Out"}</span>
+      </td>
+      <td className="px-4 py-3" style={dim}>
+        {PURPOSE_LABELS[txn.purpose] ?? txn.purpose}
+        {txn.purpose === "director_loan" ? <Badge tone="warn" className="ml-1">s.140B</Badge> : null}
+      </td>
+      <td className="px-4 py-3 money" style={dim}>
+        <span className={txn.direction === "injection" ? "money-in" : "money-out"}>
+          {txn.direction === "injection" ? "" : "−"}{formatRM(txn.amountSen)}
+        </span>
+      </td>
+      <td className="px-4 py-3" style={dim}>{txn.paymentMethodName}</td>
+      <td className="px-4 py-3" style={dim}>
+        {txn.reference || "—"}
+        {txn.deleted ? (
+          <span className="ml-2 align-middle"><Badge tone="muted">Deleted</Badge>
+            {txn.deletedReason ? <span style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}> · {txn.deletedReason}</span> : null}
+          </span>
+        ) : null}
+      </td>
+      <td className="px-4 py-3 text-right">
+        {txn.deleted ? (
+          <span style={{ color: "var(--text-faint)", fontSize: "var(--text-label)" }}>—</span>
+        ) : (
+          <div className="flex justify-end gap-3">
+            <button type="button" onClick={() => setMode("edit")} style={{ color: "var(--brand)" }}>Edit</button>
+            <button type="button" onClick={() => setMode("delete")} style={{ color: "var(--text-muted)" }}>Delete</button>
+          </div>
+        )}
+      </td>
+    </tr>
+  );
+}
+
+function TransactionsTable({ transactions, partners, methods, showDeleted }: {
+  transactions: Txn[];
+  partners: { id: string; name: string; active: boolean }[];
+  methods: Method[];
+  showDeleted: boolean;
+}) {
+  const deletedCount = transactions.filter((t) => t.deleted).length;
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex justify-end">
+        <Link href={showDeleted ? "/partners" : "/partners?deleted=1"} style={{ fontSize: "var(--text-label)", color: "var(--brand)" }}>
+          {showDeleted ? "Hide deleted" : "Show deleted"}{showDeleted && deletedCount > 0 ? ` (${deletedCount})` : ""}
+        </Link>
+      </div>
+      <DataTable
+        delayMs={40}
+        columns={[
+          { key: "date", header: "Date" },
+          { key: "partner", header: "Partner" },
+          { key: "direction", header: "Direction" },
+          { key: "purpose", header: "Purpose" },
+          { key: "amount", header: "Amount", align: "right" },
+          { key: "method", header: "Method" },
+          { key: "reference", header: "Reference" },
+          { key: "actions", header: "" },
+        ]}
+        isEmpty={transactions.length === 0}
+        emptyMessage="No partner transactions yet."
+      >
+        {transactions.map((t) => (
+          <TxnRow key={t.id} txn={t} partners={partners} methods={methods} />
+        ))}
+      </DataTable>
+    </div>
   );
 }
 
@@ -586,12 +733,14 @@ export default function PartnersManager({
   transactions,
   paymentMethods,
   today,
+  showDeleted,
 }: {
   partners: Partner[];
   shareHistory: ShareRow[];
   transactions: Txn[];
   paymentMethods: Method[];
   today: string;
+  showDeleted: boolean;
 }) {
   const [adding, setAdding] = useState(false);
 
@@ -622,7 +771,12 @@ export default function PartnersManager({
 
       <section className="flex flex-col gap-3">
         <TransactionForm partners={partners} methods={paymentMethods} today={today} />
-        <TransactionsTable transactions={transactions} />
+        <TransactionsTable
+          transactions={transactions}
+          partners={partners.map((p) => ({ id: p.id, name: p.name, active: p.active }))}
+          methods={paymentMethods}
+          showDeleted={showDeleted}
+        />
       </section>
     </div>
   );

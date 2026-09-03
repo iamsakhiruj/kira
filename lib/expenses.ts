@@ -39,6 +39,13 @@ export const ExpenseSchema = z.object({
    * non-null; the field exists so 2.8's reporting can rely on it.
    */
   linkedBusinessDayId: z.string().nullable(),
+  // Soft delete — never a hard removal (breaks the audit trail and silently
+  // changes past reports). Server-set; excluded from balances/reports and
+  // hidden from the list by default.
+  deleted: z.boolean().optional(),
+  deletedReason: z.string().optional(),
+  deletedBy: z.string().optional(),
+  deletedAt: z.date().optional(),
 });
 
 export type Expense = z.infer<typeof ExpenseSchema>;

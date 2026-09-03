@@ -17,7 +17,12 @@ import RevenueManager from "./revenue-manager";
 // Depends on request-time data; never prerender.
 export const dynamic = "force-dynamic";
 
-export default async function RevenuePage() {
+export default async function RevenuePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ deleted?: string }>;
+}) {
+  const showDeleted = (await searchParams).deleted === "1";
   const settings = await getSettings();
   const currentDate = businessDateFor(new Date(), settings.cutoffHour);
 
@@ -32,7 +37,7 @@ export default async function RevenuePage() {
   const [categories, methods, entries] = await Promise.all([
     getActiveCategories("revenue"),
     getPaymentMethods(),
-    getRecentRevenueEntries(),
+    getRecentRevenueEntries(200, showDeleted),
   ]);
   const activeMethods = methods.filter((m) => m.active);
 
@@ -48,15 +53,22 @@ export default async function RevenuePage() {
       />
       <RevenueManager
         currentDate={currentDate}
+        showDeleted={showDeleted}
         categories={categories.map((c) => ({ id: c._id.toString(), name: c.name }))}
         paymentMethods={activeMethods.map((m) => ({ id: m._id.toString(), name: m.name }))}
         entries={entries.map((e) => ({
           id: e._id.toString(),
           date: e.date,
+          categoryId: e.categoryId,
           categoryName: categoryNameById.get(e.categoryId) ?? "Unknown",
           amountSen: e.amountSen,
+          paymentMethodId: e.paymentMethodId,
           paymentMethodName: methodNameById.get(e.paymentMethodId) ?? "Unknown",
           receivedFrom: e.receivedFrom,
+          reference: e.reference ?? "",
+          note: e.note ?? "",
+          deleted: e.deleted === true,
+          deletedReason: e.deletedReason ?? "",
         }))}
       />
     </div>

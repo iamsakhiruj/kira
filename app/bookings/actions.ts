@@ -29,6 +29,9 @@ import {
   ensureBookingPaymentIndexes,
   createBookingPayment,
   getPaymentsForBooking,
+  getBookingPaymentById,
+  updateBookingPayment,
+  softDeleteBookingPayment,
 } from "@/lib/bookingPaymentsStore";
 import {
   ensurePaymentMethodsIndexes,
@@ -231,6 +234,45 @@ export async function recordPayment(input: unknown): Promise<ActionResult> {
 
   await ensureBookingPaymentIndexes();
   await createBookingPayment(parsed.data, { id: user.sub, role: user.role });
+  return { ok: true };
+}
+
+/** Edit a booking payment (manager+). Changing the amount moves the booking's
+ * outstanding (computed on read). Payment method re-validated. */
+export async function editBookingPayment(
+  id: string,
+  input: unknown,
+): Promise<ActionResult> {
+  const user = await requireUser("manager");
+  const parsed = BookingPaymentInputSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: firstIssue(parsed.error) };
+
+  const existing = await getBookingPaymentById(id);
+  if (!existing) return { ok: false, error: "That payment no longer exists." };
+
+  await ensurePaymentMethodsIndexes();
+  await ensurePaymentMethodsSeeded();
+  const methods = await getPaymentMethods();
+  const valid = new Set(methods.filter((m) => m.active).map((m) => m._id.toString()));
+  if (!valid.has(parsed.data.paymentMethodId)) {
+    return { ok: false, error: "That payment method isn't valid — refresh and try again." };
+  }
+
+  const after = await updateBookingPayment(id, parsed.data, { id: user.sub, role: user.role });
+  if (!after) return { ok: false, error: "That payment no longer exists or was deleted." };
+  return { ok: true };
+}
+
+/** Soft-delete a booking payment (manager+). Required reason; never a hard
+ * removal — a deleted deposit would be orphaned. */
+export async function deleteBookingPayment(
+  id: string,
+  reason: string,
+): Promise<ActionResult> {
+  const user = await requireUser("manager");
+  if (!reason.trim()) return { ok: false, error: "Enter a reason for deleting this payment." };
+  const after = await softDeleteBookingPayment(id, reason.trim(), { id: user.sub, role: user.role });
+  if (!after) return { ok: false, error: "That payment no longer exists or was already deleted." };
   return { ok: true };
 }
 

@@ -230,35 +230,49 @@ export async function setShares(
 
 const RECENT_TXN_LIMIT = 200;
 
+/** Excludes soft-deleted transactions — every balance/report query uses this
+ * so a deleted drawing/injection stops counting the moment it's deleted. */
+const NOT_DELETED = { deleted: { $ne: true } };
+
 export async function getRecentTransactions(
   limit: number = RECENT_TXN_LIMIT,
+  includeDeleted = false,
 ): Promise<StoredPartnerTransaction[]> {
   const col = await txnsCol();
   return (await col
-    .find({})
+    .find(includeDeleted ? {} : NOT_DELETED)
     .sort({ date: -1 })
     .limit(limit)
     .toArray()) as StoredPartnerTransaction[];
 }
 
-/** Partner transactions in a calendar month ("YYYY-MM"). */
+export async function getPartnerTransactionById(
+  id: string,
+): Promise<StoredPartnerTransaction | null> {
+  if (!ObjectId.isValid(id)) return null;
+  const col = await txnsCol();
+  return col.findOne({ _id: new ObjectId(id) }) as Promise<StoredPartnerTransaction | null>;
+}
+
+/** Partner transactions in a calendar month ("YYYY-MM"). Excludes soft-deleted. */
 export async function getPartnerTransactionsForMonth(
   month: string,
 ): Promise<StoredPartnerTransaction[]> {
   const col = await txnsCol();
   return (await col
-    .find({ date: { $gte: `${month}-01`, $lte: `${month}-31` } })
+    .find({ date: { $gte: `${month}-01`, $lte: `${month}-31` }, ...NOT_DELETED })
     .toArray()) as StoredPartnerTransaction[];
 }
 
-/** Partner transactions between two dates (inclusive, "YYYY-MM-DD"). */
+/** Partner transactions between two dates (inclusive, "YYYY-MM-DD"). Excludes
+ * soft-deleted, so account balances never count a deleted transaction. */
 export async function getPartnerTransactionsBetween(
   fromDate: string,
   toDate: string,
 ): Promise<StoredPartnerTransaction[]> {
   const col = await txnsCol();
   return (await col
-    .find({ date: { $gte: fromDate, $lte: toDate } })
+    .find({ date: { $gte: fromDate, $lte: toDate }, ...NOT_DELETED })
     .toArray()) as StoredPartnerTransaction[];
 }
 
@@ -285,6 +299,77 @@ export async function recordTransaction(
   return res.insertedId.toString();
 }
 
+/** Edit a transaction (owner). Changing the amount/direction moves the partner
+ * balance and any account balance (both computed on read). Full audit. */
+export async function updatePartnerTransaction(
+  id: string,
+  input: z.infer<typeof PartnerTransactionInputSchema>,
+  actor: { id: string; role: Role },
+): Promise<StoredPartnerTransaction | null> {
+  if (!ObjectId.isValid(id)) return null;
+  const col = await txnsCol();
+  const _id = new ObjectId(id);
+  const before = await col.findOne({ _id });
+  if (!before || before.deleted === true) return null;
+
+  const after = (await col.findOneAndUpdate(
+    { _id, deleted: { $ne: true } },
+    { $set: { ...input } },
+    { returnDocument: "after" },
+  )) as StoredPartnerTransaction | null;
+  if (!after) return null;
+
+  await recordAudit({
+    actorId: actor.id,
+    actorRole: actor.role,
+    action: "update",
+    collection: "partnerTransactions",
+    documentId: id,
+    before,
+    after,
+  });
+  return after;
+}
+
+/** Soft-delete a transaction (owner). Required reason; never a hard removal. */
+export async function softDeletePartnerTransaction(
+  id: string,
+  reason: string,
+  actor: { id: string; role: Role },
+): Promise<StoredPartnerTransaction | null> {
+  if (!ObjectId.isValid(id)) return null;
+  const col = await txnsCol();
+  const _id = new ObjectId(id);
+  const before = await col.findOne({ _id });
+  if (!before || before.deleted === true) return null;
+
+  const after = (await col.findOneAndUpdate(
+    { _id, deleted: { $ne: true } },
+    {
+      $set: {
+        deleted: true,
+        deletedReason: reason,
+        deletedBy: actor.id,
+        deletedAt: new Date(),
+      },
+    },
+    { returnDocument: "after" },
+  )) as StoredPartnerTransaction | null;
+  if (!after) return null;
+
+  await recordAudit({
+    actorId: actor.id,
+    actorRole: actor.role,
+    action: "delete",
+    collection: "partnerTransactions",
+    documentId: id,
+    before,
+    after,
+    reason,
+  });
+  return after;
+}
+
 // --- balances -------------------------------------------------------------
 
 export interface PartnerBalance {
@@ -305,7 +390,9 @@ export interface PartnerBalance {
  * director-loan total for the §2 / s.140B flag.
  */
 export async function getPartnerBalances(): Promise<Map<string, PartnerBalance>> {
-  const txns = (await (await txnsCol()).find({}).toArray()) as StoredPartnerTransaction[];
+  const txns = (await (await txnsCol())
+    .find(NOT_DELETED)
+    .toArray()) as StoredPartnerTransaction[];
   const allocations = await (await getDb())
     .collection("profitAllocations")
     .find({})

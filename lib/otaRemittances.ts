@@ -34,6 +34,12 @@ export const OtaRemittanceSchema = z.object({
   /** User id, set server-side from the session — never client input. */
   recordedBy: z.string().min(1),
   recordedAt: z.date(),
+  // Soft delete — never a hard removal. Server-set; excluded from the
+  // outstanding balance and hidden from the list by default.
+  deleted: z.boolean().optional(),
+  deletedReason: z.string().optional(),
+  deletedBy: z.string().optional(),
+  deletedAt: z.date().optional(),
 });
 
 export type OtaRemittance = z.infer<typeof OtaRemittanceSchema>;

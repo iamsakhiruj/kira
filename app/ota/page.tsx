@@ -30,10 +30,11 @@ export const dynamic = "force-dynamic";
 export default async function OtaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; deleted?: string }>;
 }) {
   const settings = await getSettings();
   const params = await searchParams;
+  const showDeleted = params.deleted === "1";
 
   const today = businessDateFor(new Date(), settings.cutoffHour);
   const defaultRange = thisMonthRange(today);
@@ -60,11 +61,12 @@ export default async function OtaPage({
     ensurePaymentMethodsSeeded(),
   ]);
 
-  const [daysInRange, allDaysWithOta, allRemittances, platforms, paymentMethods] =
+  const [daysInRange, allDaysWithOta, allRemittances, remittancesForList, platforms, paymentMethods] =
     await Promise.all([
       getBusinessDaysBetween(clampedFrom, clampedTo),
       getAllBusinessDaysWithOtaBookings(),
-      getAllOtaRemittances(),
+      getAllOtaRemittances(), // balances always exclude deleted
+      getAllOtaRemittances(showDeleted), // the history list may include them
       getOtaPlatforms(),
       getPaymentMethods(),
     ]);
@@ -110,6 +112,26 @@ export default async function OtaPage({
 
   const preset = detectPreset(clampedFrom, clampedTo, today);
 
+  const platformNameById = new Map(platforms.map((p) => [p._id.toString(), p.name]));
+  const methodNameById = new Map(paymentMethods.map((m) => [m._id.toString(), m.name]));
+  const remittances = remittancesForList
+    .slice()
+    .sort((a, b) => (a.date < b.date ? 1 : -1))
+    .map((r) => ({
+      id: r._id.toString(),
+      platformId: r.platformId,
+      platformName: platformNameById.get(r.platformId) ?? "Unknown",
+      date: r.date,
+      amountReceivedSen: r.amountReceivedSen,
+      outstandingCoveredSen: r.outstandingCoveredSen,
+      paymentMethodId: r.paymentMethodId,
+      paymentMethodName: methodNameById.get(r.paymentMethodId) ?? "—",
+      reference: r.reference ?? "",
+      note: r.note ?? "",
+      deleted: r.deleted === true,
+      deletedReason: r.deletedReason ?? "",
+    }));
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -132,6 +154,11 @@ export default async function OtaPage({
       </p>
       <OtaClient
         rows={rows}
+        remittances={remittances}
+        showDeleted={showDeleted}
+        activePlatforms={platforms
+          .filter((p) => p.active)
+          .map((p) => ({ id: p._id.toString(), name: p.name }))}
         paymentMethods={paymentMethods
           .filter((m) => m.active)
           .map((m) => ({ id: m._id.toString(), name: m.name }))}

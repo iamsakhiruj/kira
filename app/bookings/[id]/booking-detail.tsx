@@ -22,7 +22,13 @@ import Card from "@/components/ui/card";
 import FormPanel from "@/components/ui/form-panel";
 import DataTable from "@/components/ui/data-table";
 import Badge, { type BadgeTone } from "@/components/ui/badge";
-import { recordPayment, changeBookingStatus, cancelBooking } from "../actions";
+import {
+  recordPayment,
+  changeBookingStatus,
+  cancelBooking,
+  editBookingPayment,
+  deleteBookingPayment,
+} from "../actions";
 
 interface RoomLineView {
   roomType: string;
@@ -73,6 +79,7 @@ interface PaymentView {
   date: string;
   amountSen: number;
   type: PaymentType;
+  paymentMethodId: string;
   methodName: string;
   reference: string;
   note: string;
@@ -585,6 +592,119 @@ function CancelForm({
   );
 }
 
+const PAYMENT_COLS = 6;
+
+function PaymentRow({
+  payment,
+  bookingId,
+  paymentMethods,
+  canManage,
+}: {
+  payment: PaymentView;
+  bookingId: string;
+  paymentMethods: { id: string; name: string }[];
+  canManage: boolean;
+}) {
+  const router = useRouter();
+  const [mode, setMode] = useState<"view" | "edit" | "delete">("view");
+  const [date, setDate] = useState(payment.date);
+  const [type, setType] = useState<PaymentType>(payment.type);
+  const [methodId, setMethodId] = useState(payment.paymentMethodId);
+  const [amount, setAmount] = useState(fromSen(payment.amountSen));
+  const [reference, setReference] = useState(payment.reference);
+  const [note, setNote] = useState(payment.note);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  async function save() {
+    setError(null);
+    const amountSen = parseAmt(amount);
+    if (amountSen === null) return setError("Enter an amount greater than zero.");
+    setPending(true);
+    const res = await editBookingPayment(payment.id, {
+      bookingId, date, amountSen, paymentMethodId: methodId, type, reference, note,
+    });
+    setPending(false);
+    if (res.ok) { router.refresh(); setMode("view"); } else { setError(res.error); }
+  }
+
+  async function confirmDelete() {
+    setError(null);
+    if (!reason.trim()) return setError("Enter a reason.");
+    setPending(true);
+    const res = await deleteBookingPayment(payment.id, reason.trim());
+    setPending(false);
+    if (res.ok) { router.refresh(); setMode("view"); } else { setError(res.error); }
+  }
+
+  if (mode === "edit") {
+    return (
+      <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--page)" }}>
+        <td className="px-4 py-3" colSpan={PAYMENT_COLS}>
+          <div className="flex flex-col gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              <input aria-label="Edit payment date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className="h-9 rounded border px-2" style={fieldStyle} />
+              <select aria-label="Edit payment type" value={type} onChange={(e) => setType(e.target.value as PaymentType)} className="h-9 rounded border px-2" style={fieldStyle}>
+                {PAYMENT_TYPES.map((t) => <option key={t} value={t}>{PAYMENT_TYPE_LABELS[t]}</option>)}
+              </select>
+              <input aria-label="Edit payment amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} className="money h-9 rounded border px-2" style={fieldStyle} />
+              <select aria-label="Edit payment method" value={methodId} onChange={(e) => setMethodId(e.target.value)} className="h-9 rounded border px-2" style={fieldStyle}>
+                {paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+              </select>
+              <input aria-label="Edit payment reference" placeholder="Reference" value={reference} onChange={(e) => setReference(e.target.value)} className="h-9 rounded border px-2" style={fieldStyle} />
+              <input aria-label="Edit payment note" placeholder="Note" value={note} onChange={(e) => setNote(e.target.value)} className="h-9 rounded border px-2" style={fieldStyle} />
+            </div>
+            <div className="flex items-center gap-3">
+              <button type="button" disabled={pending} onClick={save} style={{ color: "var(--brand)", fontWeight: 600 }}>{pending ? "Saving…" : "Save"}</button>
+              <button type="button" onClick={() => setMode("view")} style={{ color: "var(--text-muted)" }}>Cancel</button>
+              {error ? <span style={{ fontSize: "var(--text-caption)", color: "var(--warn)" }}>{error}</span> : null}
+            </div>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+  if (mode === "delete") {
+    return (
+      <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--warn-bg)" }}>
+        <td className="px-4 py-3" colSpan={PAYMENT_COLS}>
+          <div className="flex flex-wrap items-center gap-2">
+            <span style={{ fontSize: "var(--text-label)" }}>Delete this {formatRM(payment.amountSen)} payment? Reason:</span>
+            <input aria-label="Delete payment reason" value={reason} onChange={(e) => setReason(e.target.value)} className="h-9 flex-1 rounded border px-2" style={{ ...fieldStyle, minWidth: 160 }} />
+            <button type="button" disabled={pending} onClick={confirmDelete} style={{ color: "var(--warn)", fontWeight: 600 }}>{pending ? "Deleting…" : "Confirm delete"}</button>
+            <button type="button" onClick={() => setMode("view")} style={{ color: "var(--text-muted)" }}>Cancel</button>
+            {error ? <span style={{ fontSize: "var(--text-caption)", color: "var(--warn)" }}>{error}</span> : null}
+          </div>
+        </td>
+      </tr>
+    );
+  }
+  return (
+    <tr style={{ borderBottom: "1px solid var(--border)" }}>
+      <td className="px-4 py-3">{payment.date}</td>
+      <td className="px-4 py-3">{PAYMENT_TYPE_LABELS[payment.type]}</td>
+      <td className="px-4 py-3">{payment.methodName}</td>
+      <td className="px-4 py-3" style={{ color: "var(--text-muted)" }}>{payment.reference || "—"}</td>
+      <td className="px-4 py-3 money">
+        {payment.type === "refund" ? (
+          <span className="money-out">-{formatRM(payment.amountSen)}</span>
+        ) : (
+          <span className="money-in">{formatRM(payment.amountSen)}</span>
+        )}
+      </td>
+      {canManage ? (
+        <td className="px-4 py-3 text-right">
+          <div className="flex justify-end gap-3">
+            <button type="button" onClick={() => setMode("edit")} style={{ color: "var(--brand)" }}>Edit</button>
+            <button type="button" onClick={() => setMode("delete")} style={{ color: "var(--text-muted)" }}>Delete</button>
+          </div>
+        </td>
+      ) : null}
+    </tr>
+  );
+}
+
 export default function BookingDetail({
   booking,
   payments,
@@ -697,24 +817,19 @@ export default function BookingDetail({
               { key: "method", header: "Method" },
               { key: "ref", header: "Reference" },
               { key: "amount", header: "Amount", align: "right" },
+              ...(canManage ? [{ key: "actions", header: "" }] : []),
             ]}
             isEmpty={payments.length === 0}
             emptyMessage="No payments recorded yet."
           >
             {payments.map((p) => (
-              <tr key={p.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                <td className="px-4 py-3">{p.date}</td>
-                <td className="px-4 py-3">{PAYMENT_TYPE_LABELS[p.type]}</td>
-                <td className="px-4 py-3">{p.methodName}</td>
-                <td className="px-4 py-3" style={{ color: "var(--text-muted)" }}>{p.reference || "—"}</td>
-                <td className="px-4 py-3 money">
-                  {p.type === "refund" ? (
-                    <span className="money-out">-{formatRM(p.amountSen)}</span>
-                  ) : (
-                    <span className="money-in">{formatRM(p.amountSen)}</span>
-                  )}
-                </td>
-              </tr>
+              <PaymentRow
+                key={p.id}
+                payment={p}
+                bookingId={booking.id}
+                paymentMethods={paymentMethods}
+                canManage={canManage}
+              />
             ))}
           </DataTable>
         </div>
