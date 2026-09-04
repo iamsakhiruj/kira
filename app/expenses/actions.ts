@@ -10,6 +10,8 @@ import {
 } from "@/lib/expensesStore";
 import { getActiveCategories } from "@/lib/categoriesStore";
 import { getPaymentMethods } from "@/lib/paymentMethodsStore";
+import { CapitalInjectionInputSchema } from "@/lib/partners";
+import { getPartner, recordTransaction } from "@/lib/partnersStore";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -77,4 +79,54 @@ export async function deleteExpense(id: string, reason: string): Promise<ActionR
   const after = await softDeleteExpense(id, reason.trim(), { id: user.sub, role: user.role });
   if (!after) return { ok: false, error: "That expense no longer exists or was already deleted." };
   return { ok: true };
+}
+
+/**
+ * Record an owner capital injection — money the owner puts into the
+ * business. This is deliberately NOT an expense: it writes to
+ * `partnerTransactions` (direction "injection", purpose "capital_injection"),
+ * never to the `expenses` collection, so it can never appear in an expense
+ * total. It increases cash and the partner's balance (lib/partnersStore.ts's
+ * existing, already-tested recordTransaction — the same function /partners
+ * uses for every drawing/injection).
+ *
+ * Owner-only — stricter than this page's manager+ layout gate. The form is
+ * hidden from manager in the UI, and this is the real enforcement.
+ */
+export async function addCapitalInjection(input: unknown): Promise<ActionResult> {
+  const user = await requireUser("owner");
+
+  const parsed = CapitalInjectionInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the form." };
+  }
+
+  const partner = await getPartner(parsed.data.partnerId);
+  if (!partner || partner.active !== true) {
+    return { ok: false, error: "Choose an active partner." };
+  }
+
+  const methods = await getPaymentMethods();
+  if (!methods.some((m) => m.active && m._id.toString() === parsed.data.paymentMethodId)) {
+    return { ok: false, error: "That payment method is no longer available." };
+  }
+
+  try {
+    await recordTransaction(
+      {
+        partnerId: parsed.data.partnerId,
+        date: parsed.data.date,
+        amountSen: parsed.data.amountSen,
+        direction: "injection",
+        paymentMethodId: parsed.data.paymentMethodId,
+        purpose: "capital_injection",
+        reference: parsed.data.reference,
+        note: parsed.data.note,
+      },
+      { id: user.sub, role: user.role },
+    );
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
 }

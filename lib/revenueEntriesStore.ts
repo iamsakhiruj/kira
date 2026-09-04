@@ -65,14 +65,17 @@ export async function getRevenueEntriesForMonth(
 }
 
 /** Standalone revenue entries between two dates (inclusive). Excludes
- * soft-deleted — so balances and reports never count a deleted entry. */
+ * soft-deleted by default — so balances and reports never count a deleted
+ * entry; the /revenue page's "show deleted" toggle passes includeDeleted to
+ * see them alongside the same range, view-only. */
 export async function getRevenueEntriesBetween(
   fromDate: string,
   toDate: string,
+  includeDeleted = false,
 ): Promise<StoredRevenueEntry[]> {
   const col = await collection();
   const docs = await col
-    .find({ date: { $gte: fromDate, $lte: toDate }, ...NOT_DELETED })
+    .find({ date: { $gte: fromDate, $lte: toDate }, ...(includeDeleted ? {} : NOT_DELETED) })
     .toArray();
   return docs as StoredRevenueEntry[];
 }

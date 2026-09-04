@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-type Preset = "this_month" | "last_month" | "this_year" | "custom";
+export type Preset = "today" | "this_week" | "this_month" | "last_month" | "this_year" | "custom";
 
 /**
  * Date-range picker for /reports. Manages from/to inputs and preset buttons,
@@ -15,14 +15,23 @@ export default function ReportsPicker({
   initialFrom,
   initialTo,
   initialPreset,
+  today,
   basePath = "/reports",
+  presets,
 }: {
   initialFrom: string;
   initialTo: string;
   initialPreset: Preset;
+  /** Server-computed KL business date "now" (businessDateFor) — never
+   * derived on the client. Anchors Today/This week/This year so they're
+   * correct regardless of what range is currently on screen. */
+  today: string;
   /** Which page's URL to push the range onto — /reports by default, /ota
    * reuses this same date-math logic rather than duplicating it. */
   basePath?: string;
+  /** Which preset buttons to show, in order — defaults to all five.
+   * /revenue and /expenses only want this month / last month / custom. */
+  presets?: Preset[];
 }) {
   const router = useRouter();
   const [from, setFrom] = useState(initialFrom);
@@ -55,17 +64,36 @@ export default function ReportsPicker({
   }
 
   // Preset calculators — pure string arithmetic, no Date objects needed.
+  // All anchor on `today` (server-computed, passed as a prop), never on
+  // initialFrom/initialTo — those reflect whatever range is currently on
+  // screen, which is not necessarily "today" once a preset like Today or
+  // This week has been clicked once already.
+  function presetToday(): [string, string] {
+    return [today, today];
+  }
+
+  function presetThisWeek(): [string, string] {
+    const [y, m, d] = today.split("-").map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d, 12));
+    const dow = date.getUTCDay(); // 0 = Sun .. 6 = Sat
+    const daysSinceMonday = dow === 0 ? 6 : dow - 1;
+    const monday = new Date(date);
+    monday.setUTCDate(date.getUTCDate() - daysSinceMonday);
+    const sunday = new Date(monday);
+    sunday.setUTCDate(monday.getUTCDate() + 6);
+    const fmt = (dt: Date) =>
+      `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+    return [fmt(monday), fmt(sunday)];
+  }
+
   function presetThisMonth(): [string, string] {
-    const [y, m] = initialFrom.split("-");
-    // Use the year/month from the server-provided "this month" start date.
+    const [y, m] = today.split("-");
     const lastDay = lastDayOfMonth(y, m);
     return [`${y}-${m}-01`, `${y}-${m}-${String(lastDay).padStart(2, "0")}`];
   }
 
-  // These calculations need actual date math — use the current from/to
-  // as anchors. We derive month/year from initialFrom which the server set.
   function presetLastMonth(): [string, string] {
-    const [ys, ms] = initialFrom.split("-");
+    const [ys, ms] = today.split("-");
     const y = Number(ys);
     const m = Number(ms);
     const prevM = m === 1 ? 12 : m - 1;
@@ -78,9 +106,8 @@ export default function ReportsPicker({
   }
 
   function presetThisYear(): [string, string] {
-    const [ys] = initialFrom.split("-");
-    // to = initialTo which is today (server-provided)
-    return [`${ys}-01-01`, initialTo];
+    const [ys] = today.split("-");
+    return [`${ys}-01-01`, today];
   }
 
   function lastDayOfMonth(yearStr: string, monthStr: string): number {
@@ -89,12 +116,17 @@ export default function ReportsPicker({
     return new Date(y, m, 0).getDate(); // day 0 of next month = last day of this month
   }
 
-  const PRESETS: { id: Preset; label: string; compute: () => [string, string] }[] = [
+  const ALL_PRESETS: { id: Preset; label: string; compute: () => [string, string] }[] = [
+    { id: "today", label: "Today", compute: presetToday },
+    { id: "this_week", label: "This week", compute: presetThisWeek },
     { id: "this_month", label: "This month", compute: presetThisMonth },
     { id: "last_month", label: "Last month", compute: presetLastMonth },
     { id: "this_year", label: "This year", compute: presetThisYear },
     { id: "custom", label: "Custom", compute: () => [from, to] },
   ];
+  const PRESETS = presets
+    ? ALL_PRESETS.filter((p) => presets.includes(p.id))
+    : ALL_PRESETS;
 
   return (
     <div className="flex flex-wrap items-end gap-3">

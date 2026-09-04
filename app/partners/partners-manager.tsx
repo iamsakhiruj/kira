@@ -79,6 +79,7 @@ const PURPOSE_LABELS: Record<string, string> = {
   reimbursement: "Reimbursement",
   loan_repayment: "Loan repayment",
   director_loan: "Director's loan",
+  capital_injection: "Capital injection",
 };
 const PURPOSES = Object.keys(PURPOSE_LABELS);
 

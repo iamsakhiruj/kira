@@ -1,12 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { toSen, fromSen, formatRM } from "@/lib/money";
+import { toSen, fromSen, formatRM, MoneyError } from "@/lib/money";
 import FormPanel from "@/components/ui/form-panel";
 import DataTable from "@/components/ui/data-table";
 import Badge from "@/components/ui/badge";
+import EntrySummaryCards from "@/components/entry-summary-cards";
+import {
+  filterStandaloneLedgerLines,
+  groupStandaloneLedgerByDate,
+  standaloneLedgerGrandTotalSen,
+  standaloneChannelSummary,
+  type StandaloneLedgerLine,
+} from "@/lib/standaloneLedger";
 import { addRevenueEntry, editRevenueEntry, deleteRevenueEntry } from "./actions";
 
 interface Option {
@@ -22,9 +30,11 @@ interface RevenueRow {
   amountSen: number;
   paymentMethodId: string;
   paymentMethodName: string;
+  paymentMethodType: string;
   receivedFrom: string;
   reference: string;
   note: string;
+  enteredBy: string;
   deleted: boolean;
   deletedReason: string;
 }
@@ -33,6 +43,8 @@ const fieldStyle: React.CSSProperties = {
   borderColor: "var(--border-strong)",
   background: "var(--surface)",
 };
+
+const COLUMNS = 8;
 
 function parseAmt(s: string): number | null {
   if (s.trim() === "") return null;
@@ -44,7 +56,33 @@ function parseAmt(s: string): number | null {
   }
 }
 
-const COLUMNS = 6;
+function parseMinAmount(input: string): number | undefined {
+  if (!input.trim()) return undefined;
+  try {
+    return toSen(input);
+  } catch (err) {
+    if (err instanceof MoneyError) return undefined;
+    throw err;
+  }
+}
+
+function toLedgerLine(e: RevenueRow): StandaloneLedgerLine {
+  return {
+    id: e.id,
+    date: e.date,
+    category: e.categoryName,
+    note: e.note,
+    counterparty: e.receivedFrom,
+    paymentMethod: e.paymentMethodName,
+    paymentMethodType: e.paymentMethodType,
+    amountSen: e.amountSen,
+    enteredBy: e.enteredBy,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Add revenue entry form
+// ---------------------------------------------------------------------------
 
 function AddForm({ categories, paymentMethods, currentDate }: {
   categories: Option[];
@@ -134,6 +172,10 @@ function AddForm({ categories, paymentMethods, currentDate }: {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Edit / delete rows
+// ---------------------------------------------------------------------------
+
 function EditRow({ entry, categories, paymentMethods, onDone }: {
   entry: RevenueRow;
   categories: Option[];
@@ -165,7 +207,7 @@ function EditRow({ entry, categories, paymentMethods, onDone }: {
 
   return (
     <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--page)" }}>
-      <td className="px-4 py-3" colSpan={COLUMNS}>
+      <td className="px-3 py-3" colSpan={COLUMNS}>
         <div className="flex flex-col gap-2">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <input aria-label="Edit date" type="date" value={date} onChange={(e) => setDate(e.target.value)}
@@ -217,7 +259,7 @@ function DeleteRow({ entry, onDone }: { entry: RevenueRow; onDone: () => void })
 
   return (
     <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--warn-bg)" }}>
-      <td className="px-4 py-3" colSpan={COLUMNS}>
+      <td className="px-3 py-3" colSpan={COLUMNS}>
         <div className="flex flex-wrap items-center gap-2">
           <span style={{ fontSize: "var(--text-label)" }}>
             Delete this {formatRM(entry.amountSen)} entry? Reason (required):
@@ -249,81 +291,255 @@ function Row({ entry, categories, paymentMethods }: {
     return <DeleteRow entry={entry} onDone={() => setMode("view")} />;
   }
 
-  const dim = entry.deleted ? { opacity: 0.55 } : undefined;
   return (
     <tr className="table-row-hover" style={{ borderBottom: "1px solid var(--border)" }}>
-      <td className="px-4 py-3" style={dim}>{entry.date}</td>
-      <td className="px-4 py-3" style={dim}>{entry.categoryName}</td>
-      <td className="px-4 py-3 money" style={dim}>{formatRM(entry.amountSen)}</td>
-      <td className="px-4 py-3" style={dim}>{entry.paymentMethodName}</td>
-      <td className="px-4 py-3" style={dim}>
-        {entry.receivedFrom || "—"}
-        {entry.deleted ? (
-          <span className="ml-2 align-middle">
-            <Badge tone="muted">Deleted</Badge>
-            {entry.deletedReason ? (
-              <span style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}> · {entry.deletedReason}</span>
-            ) : null}
-          </span>
-        ) : null}
-      </td>
-      <td className="px-4 py-3 text-right">
-        {entry.deleted ? (
-          <span style={{ color: "var(--text-faint)", fontSize: "var(--text-label)" }}>—</span>
-        ) : (
-          <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setMode("edit")} style={{ color: "var(--brand)" }}>Edit</button>
-            <button type="button" onClick={() => setMode("delete")} style={{ color: "var(--text-muted)" }}>Delete</button>
-          </div>
-        )}
+      <td className="px-3 py-2">{entry.date}</td>
+      <td className="px-3 py-2">{entry.categoryName}</td>
+      <td className="px-3 py-2" style={{ color: "var(--text-muted)" }}>{entry.note || "—"}</td>
+      <td className="px-3 py-2">{entry.receivedFrom || "—"}</td>
+      <td className="px-3 py-2">{entry.paymentMethodName}</td>
+      <td className="px-3 py-2 money text-right">{formatRM(entry.amountSen)}</td>
+      <td className="px-3 py-2">{entry.enteredBy}</td>
+      <td className="px-3 py-2 text-right">
+        <div className="flex justify-end gap-3">
+          <button type="button" onClick={() => setMode("edit")} style={{ color: "var(--brand)" }}>Edit</button>
+          <button type="button" onClick={() => setMode("delete")} style={{ color: "var(--text-muted)" }}>Delete</button>
+        </div>
       </td>
     </tr>
   );
 }
 
-export default function RevenueManager({
+function DeletedRow({ entry }: { entry: RevenueRow }) {
+  return (
+    <tr style={{ borderBottom: "1px solid var(--border)", opacity: 0.55 }}>
+      <td className="px-3 py-2">{entry.date}</td>
+      <td className="px-3 py-2">{entry.categoryName}</td>
+      <td className="px-3 py-2" style={{ color: "var(--text-muted)" }}>{entry.note || "—"}</td>
+      <td className="px-3 py-2">{entry.receivedFrom || "—"}</td>
+      <td className="px-3 py-2">{entry.paymentMethodName}</td>
+      <td className="px-3 py-2 money text-right">{formatRM(entry.amountSen)}</td>
+      <td className="px-3 py-2">{entry.enteredBy}</td>
+      <td className="px-3 py-2">
+        <Badge tone="muted">Deleted</Badge>
+        {entry.deletedReason ? (
+          <span style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}> · {entry.deletedReason}</span>
+        ) : null}
+      </td>
+    </tr>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Filter bar + summary + day-by-day list
+// ---------------------------------------------------------------------------
+
+function RevenueWorkspace({
   entries,
   categories,
   paymentMethods,
-  currentDate,
   showDeleted,
+  deletedEntries,
+  rangeFrom,
+  rangeTo,
+  frontDeskRevenueSen,
 }: {
   entries: RevenueRow[];
   categories: Option[];
   paymentMethods: Option[];
-  currentDate: string;
   showDeleted: boolean;
+  deletedEntries: RevenueRow[];
+  rangeFrom: string;
+  rangeTo: string;
+  frontDeskRevenueSen: number;
 }) {
-  const deletedCount = entries.filter((e) => e.deleted).length;
+  const [category, setCategory] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [minAmountInput, setMinAmountInput] = useState("");
+
+  const lines = useMemo(() => entries.map(toLedgerLine), [entries]);
+  const rowById = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
+
+  const categoryOptions = useMemo(
+    () => Array.from(new Set(lines.map((l) => l.category))).sort((a, b) => a.localeCompare(b)),
+    [lines],
+  );
+  const paymentMethodOptions = useMemo(
+    () => Array.from(new Set(lines.map((l) => l.paymentMethod))).sort((a, b) => a.localeCompare(b)),
+    [lines],
+  );
+
+  const minAmountSen = parseMinAmount(minAmountInput);
+  const hasFilters = !!category || !!paymentMethod || minAmountSen !== undefined;
+
+  const filteredLines = useMemo(
+    () =>
+      filterStandaloneLedgerLines(lines, {
+        category: category || undefined,
+        paymentMethod: paymentMethod || undefined,
+        minAmountSen,
+      }),
+    [lines, category, paymentMethod, minAmountSen],
+  );
+
+  const groups = useMemo(() => groupStandaloneLedgerByDate(filteredLines, "desc"), [filteredLines]);
+  const standaloneTotalSen = standaloneLedgerGrandTotalSen(filteredLines);
+  const channelSummary = standaloneChannelSummary(filteredLines);
+
+  function clearFilters() {
+    setCategory("");
+    setPaymentMethod("");
+    setMinAmountInput("");
+  }
+
   return (
     <div className="flex flex-col gap-4">
-      <AddForm categories={categories} paymentMethods={paymentMethods} currentDate={currentDate} />
-      <div className="flex justify-end">
+      <EntrySummaryCards
+        totalSen={standaloneTotalSen}
+        entryCount={filteredLines.length}
+        channelSummary={channelSummary}
+        tone="revenue"
+        extraLines={[
+          { label: "Front desk (night reports)", amountSen: frontDeskRevenueSen },
+          { label: "Standalone (this page)", amountSen: standaloneTotalSen },
+        ]}
+      />
+
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1">
+            <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Category</span>
+            <select aria-label="Filter by category" className="h-9 rounded border px-2" style={fieldStyle}
+              value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="">All categories</option>
+              {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Payment method</span>
+            <select aria-label="Filter by payment method" className="h-9 rounded border px-2" style={fieldStyle}
+              value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+              <option value="">All methods</option>
+              {paymentMethodOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Minimum amount</span>
+            <input aria-label="Minimum amount" inputMode="decimal" placeholder="0.00"
+              className="money h-9 w-28 rounded border px-2" style={fieldStyle}
+              value={minAmountInput} onChange={(e) => setMinAmountInput(e.target.value)} />
+          </label>
+          {hasFilters ? (
+            <button type="button" onClick={clearFilters} style={{ fontSize: "var(--text-label)", color: "var(--brand)", height: 36 }}>
+              Clear filters
+            </button>
+          ) : null}
+        </div>
         <Link
-          href={showDeleted ? "/revenue" : "/revenue?deleted=1"}
+          href={showDeleted ? `/revenue?from=${rangeFrom}&to=${rangeTo}` : `/revenue?from=${rangeFrom}&to=${rangeTo}&deleted=1`}
           style={{ fontSize: "var(--text-label)", color: "var(--brand)" }}
         >
           {showDeleted ? "Hide deleted" : "Show deleted"}
-          {showDeleted && deletedCount > 0 ? ` (${deletedCount})` : ""}
         </Link>
       </div>
+
       <DataTable
-        delayMs={80}
         columns={[
           { key: "date", header: "Date" },
           { key: "category", header: "Category" },
-          { key: "amount", header: "Amount", align: "right" },
-          { key: "method", header: "Payment method" },
+          { key: "note", header: "Description" },
           { key: "from", header: "Received from" },
+          { key: "method", header: "Payment method" },
+          { key: "amount", header: "Amount", align: "right" },
+          { key: "enteredBy", header: "Entered by" },
           { key: "actions", header: "" },
         ]}
-        isEmpty={entries.length === 0}
-        emptyMessage="No revenue entries recorded yet."
+        isEmpty={filteredLines.length === 0}
+        emptyMessage="No standalone revenue entries match this range and filters."
       >
-        {entries.map((e) => (
-          <Row key={e.id} entry={e} categories={categories} paymentMethods={paymentMethods} />
+        {groups.map((group) => (
+          <Fragment key={group.date}>
+            <tr style={{ background: "var(--page)" }}>
+              <td colSpan={5} className="px-3 py-2" style={{ fontWeight: 600 }}>
+                {group.date}
+              </td>
+              <td className="px-3 py-2 money text-right" style={{ fontWeight: 600 }}>
+                {formatRM(group.subtotalSen)}
+              </td>
+              <td colSpan={2} />
+            </tr>
+            {group.lines.map((l) => (
+              <Row key={l.id} entry={rowById.get(l.id)!} categories={categories} paymentMethods={paymentMethods} />
+            ))}
+          </Fragment>
         ))}
+        {filteredLines.length > 0 ? (
+          <tr style={{ fontWeight: 600, borderTop: "2px solid var(--border-strong)" }}>
+            <td colSpan={5} className="px-3 py-3">Grand total</td>
+            <td className="px-3 py-3 money text-right">{formatRM(standaloneTotalSen)}</td>
+            <td colSpan={2} />
+          </tr>
+        ) : null}
       </DataTable>
+
+      {showDeleted ? (
+        <DataTable
+          columns={[
+            { key: "date", header: "Date" },
+            { key: "category", header: "Category" },
+            { key: "note", header: "Description" },
+            { key: "from", header: "Received from" },
+            { key: "method", header: "Payment method" },
+            { key: "amount", header: "Amount", align: "right" },
+            { key: "enteredBy", header: "Entered by" },
+            { key: "status", header: "" },
+          ]}
+          isEmpty={deletedEntries.length === 0}
+          emptyMessage="No deleted entries in this range."
+        >
+          {deletedEntries.map((e) => <DeletedRow key={e.id} entry={e} />)}
+        </DataTable>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export default function RevenueManager({
+  entries,
+  deletedEntries,
+  categories,
+  paymentMethods,
+  currentDate,
+  rangeFrom,
+  rangeTo,
+  showDeleted,
+  frontDeskRevenueSen,
+}: {
+  entries: RevenueRow[];
+  deletedEntries: RevenueRow[];
+  categories: Option[];
+  paymentMethods: Option[];
+  currentDate: string;
+  rangeFrom: string;
+  rangeTo: string;
+  showDeleted: boolean;
+  frontDeskRevenueSen: number;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <AddForm categories={categories} paymentMethods={paymentMethods} currentDate={currentDate} />
+      <RevenueWorkspace
+        entries={entries}
+        deletedEntries={deletedEntries}
+        categories={categories}
+        paymentMethods={paymentMethods}
+        showDeleted={showDeleted}
+        rangeFrom={rangeFrom}
+        rangeTo={rangeTo}
+        frontDeskRevenueSen={frontDeskRevenueSen}
+      />
     </div>
   );
 }

@@ -61,15 +61,18 @@ export async function getExpensesForMonth(
   return docs as StoredExpense[];
 }
 
-/** Standalone expenses between two dates (inclusive). Excludes soft-deleted —
- * so balances and reports never count a deleted expense. */
+/** Standalone expenses between two dates (inclusive). Excludes soft-deleted
+ * by default — so balances and reports never count a deleted expense; the
+ * /expenses page's "show deleted" toggle passes includeDeleted to see them
+ * alongside the same range, view-only. */
 export async function getExpensesBetween(
   fromDate: string,
   toDate: string,
+  includeDeleted = false,
 ): Promise<StoredExpense[]> {
   const col = await collection();
   const docs = await col
-    .find({ date: { $gte: fromDate, $lte: toDate }, ...NOT_DELETED })
+    .find({ date: { $gte: fromDate, $lte: toDate }, ...(includeDeleted ? {} : NOT_DELETED) })
     .toArray();
   return docs as StoredExpense[];
 }

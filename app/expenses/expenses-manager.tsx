@@ -1,14 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { toSen, fromSen, formatRM } from "@/lib/money";
+import { toSen, fromSen, formatRM, MoneyError } from "@/lib/money";
 import { CAPITAL_OR_OPERATING } from "@/lib/expenses";
 import FormPanel from "@/components/ui/form-panel";
 import DataTable from "@/components/ui/data-table";
 import Badge from "@/components/ui/badge";
-import { addExpense, editExpense, deleteExpense } from "./actions";
+import EntrySummaryCards from "@/components/entry-summary-cards";
+import {
+  filterStandaloneLedgerLines,
+  groupStandaloneLedgerByDate,
+  standaloneLedgerGrandTotalSen,
+  standaloneChannelSummary,
+  type StandaloneLedgerLine,
+} from "@/lib/standaloneLedger";
+import { addExpense, editExpense, deleteExpense, addCapitalInjection } from "./actions";
 
 interface Option {
   id: string;
@@ -24,11 +32,13 @@ interface ExpenseRow {
   amountSen: number;
   paymentMethodId: string;
   paymentMethodName: string;
+  paymentMethodType: string;
   paidTo: string;
   capitalOrOperating: CapOp;
   reference: string;
   note: string;
   receiptUrl: string;
+  enteredBy: string;
   deleted: boolean;
   deletedReason: string;
 }
@@ -38,7 +48,7 @@ const fieldStyle: React.CSSProperties = {
   background: "var(--surface)",
 };
 
-const COLUMNS = 7;
+const COLUMNS = 8;
 
 function parseAmt(s: string): number | null {
   if (s.trim() === "") return null;
@@ -49,6 +59,34 @@ function parseAmt(s: string): number | null {
     return null;
   }
 }
+
+function parseMinAmount(input: string): number | undefined {
+  if (!input.trim()) return undefined;
+  try {
+    return toSen(input);
+  } catch (err) {
+    if (err instanceof MoneyError) return undefined;
+    throw err;
+  }
+}
+
+function toLedgerLine(e: ExpenseRow): StandaloneLedgerLine {
+  return {
+    id: e.id,
+    date: e.date,
+    category: e.categoryName,
+    note: e.note,
+    counterparty: e.paidTo,
+    paymentMethod: e.paymentMethodName,
+    paymentMethodType: e.paymentMethodType,
+    amountSen: e.amountSen,
+    enteredBy: e.enteredBy,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Add expense form
+// ---------------------------------------------------------------------------
 
 function AddForm({ categories, paymentMethods, currentDate }: {
   categories: Option[];
@@ -147,6 +185,106 @@ function AddForm({ categories, paymentMethods, currentDate }: {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Capital injection form — owner only, deliberately its own form so it can
+// never be confused with a normal expense (it isn't one).
+// ---------------------------------------------------------------------------
+
+function AddCapitalInjectionForm({ partners, paymentMethods, currentDate }: {
+  partners: Option[];
+  paymentMethods: Option[];
+  currentDate: string;
+}) {
+  const router = useRouter();
+  const [date, setDate] = useState(currentDate);
+  const [partnerId, setPartnerId] = useState(partners[0]?.id ?? "");
+  const [amount, setAmount] = useState("");
+  const [paymentMethodId, setPaymentMethodId] = useState(paymentMethods[0]?.id ?? "");
+  const [reference, setReference] = useState("");
+  const [note, setNote] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  async function submit() {
+    setError(null);
+    setSuccess(false);
+    const amountSen = parseAmt(amount);
+    if (amountSen === null) return setError("Enter an amount greater than zero.");
+    if (!partnerId) return setError("Choose a partner — add one in Partners first if the list is empty.");
+    if (!paymentMethodId) return setError("Choose a payment method.");
+    setPending(true);
+    const res = await addCapitalInjection({ date, partnerId, amountSen, paymentMethodId, reference, note });
+    setPending(false);
+    if (res.ok) {
+      setAmount(""); setReference(""); setNote(""); setSuccess(true);
+      router.refresh();
+    } else {
+      setError(res.error);
+    }
+  }
+
+  return (
+    <FormPanel title="Capital injection (owner)" error={error} animate delayMs={60}>
+      <p style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>
+        Money the owner puts into the business. This is not an expense — it never reduces
+        profit. It increases cash and shows in your balance under Partners.
+      </p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <label className="flex flex-col gap-1">
+          <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Date</span>
+          <input aria-label="Injection date" type="date" max={currentDate} value={date}
+            onChange={(e) => setDate(e.target.value)} className="h-11 rounded border px-3" style={fieldStyle} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Partner</span>
+          <select aria-label="Injection partner" value={partnerId} onChange={(e) => setPartnerId(e.target.value)}
+            className="h-11 rounded border px-2" style={fieldStyle}>
+            {partners.length === 0 ? <option value="">No partners yet</option> : null}
+            {partners.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Amount (RM)</span>
+          <input aria-label="Injection amount" inputMode="decimal" placeholder="0.00" value={amount}
+            onChange={(e) => setAmount(e.target.value)} className="money h-11 rounded border px-3" style={fieldStyle} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Payment method</span>
+          <select aria-label="Injection payment method" value={paymentMethodId} onChange={(e) => setPaymentMethodId(e.target.value)}
+            className="h-11 rounded border px-2" style={fieldStyle}>
+            {paymentMethods.length === 0 ? <option value="">No payment methods yet</option> : null}
+            {paymentMethods.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Reference (optional)</span>
+          <input aria-label="Injection reference" value={reference} onChange={(e) => setReference(e.target.value)}
+            className="h-11 rounded border px-3" style={fieldStyle} />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Note (optional)</span>
+          <input aria-label="Injection note" value={note} onChange={(e) => setNote(e.target.value)}
+            className="h-11 rounded border px-3" style={fieldStyle} />
+        </label>
+      </div>
+      <div className="flex items-center gap-3">
+        <button type="button" disabled={pending} onClick={submit}
+          className="h-11 self-start rounded-card px-4 font-medium" style={{ opacity: pending ? 0.7 : 1, border: "1px solid var(--brand)", color: "var(--brand)" }}>
+          {pending ? "Recording…" : "Record injection"}
+        </button>
+        {success ? (
+          <span className="money-in" style={{ fontSize: "var(--text-label)" }}>Injection recorded.</span>
+        ) : null}
+      </div>
+    </FormPanel>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Edit / delete rows (unchanged behavior from before)
+// ---------------------------------------------------------------------------
+
 function EditRow({ expense, categories, paymentMethods, onDone }: {
   expense: ExpenseRow;
   categories: Option[];
@@ -180,7 +318,7 @@ function EditRow({ expense, categories, paymentMethods, onDone }: {
 
   return (
     <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--page)" }}>
-      <td className="px-4 py-3" colSpan={COLUMNS}>
+      <td className="px-3 py-3" colSpan={COLUMNS}>
         <div className="flex flex-col gap-2">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <input aria-label="Edit date" type="date" value={date} onChange={(e) => setDate(e.target.value)}
@@ -237,7 +375,7 @@ function DeleteRow({ expense, onDone }: { expense: ExpenseRow; onDone: () => voi
 
   return (
     <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--warn-bg)" }}>
-      <td className="px-4 py-3" colSpan={COLUMNS}>
+      <td className="px-3 py-3" colSpan={COLUMNS}>
         <div className="flex flex-wrap items-center gap-2">
           <span style={{ fontSize: "var(--text-label)" }}>
             Delete this {formatRM(expense.amountSen)} expense? Reason (required):
@@ -269,85 +407,253 @@ function Row({ expense, categories, paymentMethods }: {
     return <DeleteRow expense={expense} onDone={() => setMode("view")} />;
   }
 
-  const dim = expense.deleted ? { opacity: 0.55 } : undefined;
   return (
     <tr className="table-row-hover" style={{ borderBottom: "1px solid var(--border)" }}>
-      <td className="px-4 py-3" style={dim}>{expense.date}</td>
-      <td className="px-4 py-3" style={dim}>{expense.categoryName}</td>
-      <td className="px-4 py-3 money" style={dim}>{formatRM(expense.amountSen)}</td>
-      <td className="px-4 py-3" style={dim}>{expense.paymentMethodName}</td>
-      <td className="px-4 py-3" style={dim}>
-        {expense.paidTo || "—"}
-        {expense.deleted ? (
-          <span className="ml-2 align-middle">
-            <Badge tone="muted">Deleted</Badge>
-            {expense.deletedReason ? (
-              <span style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}> · {expense.deletedReason}</span>
-            ) : null}
-          </span>
-        ) : null}
-      </td>
-      <td className="px-4 py-3" style={{ ...dim, textTransform: "capitalize" }}>
-        {expense.capitalOrOperating}
-      </td>
-      <td className="px-4 py-3 text-right">
-        {expense.deleted ? (
-          <span style={{ color: "var(--text-faint)", fontSize: "var(--text-label)" }}>—</span>
-        ) : (
-          <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => setMode("edit")} style={{ color: "var(--brand)" }}>Edit</button>
-            <button type="button" onClick={() => setMode("delete")} style={{ color: "var(--text-muted)" }}>Delete</button>
-          </div>
-        )}
+      <td className="px-3 py-2">{expense.date}</td>
+      <td className="px-3 py-2">{expense.categoryName}</td>
+      <td className="px-3 py-2" style={{ color: "var(--text-muted)" }}>{expense.note || "—"}</td>
+      <td className="px-3 py-2">{expense.paidTo || "—"}</td>
+      <td className="px-3 py-2">{expense.paymentMethodName}</td>
+      <td className="px-3 py-2 money text-right">{formatRM(expense.amountSen)}</td>
+      <td className="px-3 py-2">{expense.enteredBy}</td>
+      <td className="px-3 py-2 text-right">
+        <div className="flex justify-end gap-3">
+          <button type="button" onClick={() => setMode("edit")} style={{ color: "var(--brand)" }}>Edit</button>
+          <button type="button" onClick={() => setMode("delete")} style={{ color: "var(--text-muted)" }}>Delete</button>
+        </div>
       </td>
     </tr>
   );
 }
 
-export default function ExpensesManager({
+function DeletedRow({ expense }: { expense: ExpenseRow }) {
+  return (
+    <tr style={{ borderBottom: "1px solid var(--border)", opacity: 0.55 }}>
+      <td className="px-3 py-2">{expense.date}</td>
+      <td className="px-3 py-2">{expense.categoryName}</td>
+      <td className="px-3 py-2" style={{ color: "var(--text-muted)" }}>{expense.note || "—"}</td>
+      <td className="px-3 py-2">{expense.paidTo || "—"}</td>
+      <td className="px-3 py-2">{expense.paymentMethodName}</td>
+      <td className="px-3 py-2 money text-right">{formatRM(expense.amountSen)}</td>
+      <td className="px-3 py-2">{expense.enteredBy}</td>
+      <td className="px-3 py-2">
+        <Badge tone="muted">Deleted</Badge>
+        {expense.deletedReason ? (
+          <span style={{ fontSize: "var(--text-caption)", color: "var(--text-faint)" }}> · {expense.deletedReason}</span>
+        ) : null}
+      </td>
+    </tr>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Filter bar + summary + day-by-day list
+// ---------------------------------------------------------------------------
+
+function ExpenseWorkspace({
   expenses,
   categories,
   paymentMethods,
-  currentDate,
   showDeleted,
+  deletedExpenses,
+  rangeFrom,
+  rangeTo,
 }: {
   expenses: ExpenseRow[];
   categories: Option[];
   paymentMethods: Option[];
-  currentDate: string;
   showDeleted: boolean;
+  deletedExpenses: ExpenseRow[];
+  rangeFrom: string;
+  rangeTo: string;
 }) {
-  const deletedCount = expenses.filter((e) => e.deleted).length;
+  const [category, setCategory] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("");
+  const [minAmountInput, setMinAmountInput] = useState("");
+
+  const lines = useMemo(() => expenses.map(toLedgerLine), [expenses]);
+  const rowById = useMemo(() => new Map(expenses.map((e) => [e.id, e])), [expenses]);
+
+  const categoryOptions = useMemo(
+    () => Array.from(new Set(lines.map((l) => l.category))).sort((a, b) => a.localeCompare(b)),
+    [lines],
+  );
+  const paymentMethodOptions = useMemo(
+    () => Array.from(new Set(lines.map((l) => l.paymentMethod))).sort((a, b) => a.localeCompare(b)),
+    [lines],
+  );
+
+  const minAmountSen = parseMinAmount(minAmountInput);
+  const hasFilters = !!category || !!paymentMethod || minAmountSen !== undefined;
+
+  const filteredLines = useMemo(
+    () =>
+      filterStandaloneLedgerLines(lines, {
+        category: category || undefined,
+        paymentMethod: paymentMethod || undefined,
+        minAmountSen,
+      }),
+    [lines, category, paymentMethod, minAmountSen],
+  );
+
+  const groups = useMemo(() => groupStandaloneLedgerByDate(filteredLines, "desc"), [filteredLines]);
+  const grandTotalSen = standaloneLedgerGrandTotalSen(filteredLines);
+  const channelSummary = standaloneChannelSummary(filteredLines);
+
+  function clearFilters() {
+    setCategory("");
+    setPaymentMethod("");
+    setMinAmountInput("");
+  }
+
   return (
     <div className="flex flex-col gap-4">
-      <AddForm categories={categories} paymentMethods={paymentMethods} currentDate={currentDate} />
-      <div className="flex justify-end">
+      <EntrySummaryCards
+        totalSen={grandTotalSen}
+        entryCount={filteredLines.length}
+        channelSummary={channelSummary}
+        tone="expense"
+      />
+
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1">
+            <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Category</span>
+            <select aria-label="Filter by category" className="h-9 rounded border px-2" style={fieldStyle}
+              value={category} onChange={(e) => setCategory(e.target.value)}>
+              <option value="">All categories</option>
+              {categoryOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Payment method</span>
+            <select aria-label="Filter by payment method" className="h-9 rounded border px-2" style={fieldStyle}
+              value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+              <option value="">All methods</option>
+              {paymentMethodOptions.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Minimum amount</span>
+            <input aria-label="Minimum amount" inputMode="decimal" placeholder="0.00"
+              className="money h-9 w-28 rounded border px-2" style={fieldStyle}
+              value={minAmountInput} onChange={(e) => setMinAmountInput(e.target.value)} />
+          </label>
+          {hasFilters ? (
+            <button type="button" onClick={clearFilters} style={{ fontSize: "var(--text-label)", color: "var(--brand)", height: 36 }}>
+              Clear filters
+            </button>
+          ) : null}
+        </div>
         <Link
-          href={showDeleted ? "/expenses" : "/expenses?deleted=1"}
+          href={showDeleted ? `/expenses?from=${rangeFrom}&to=${rangeTo}` : `/expenses?from=${rangeFrom}&to=${rangeTo}&deleted=1`}
           style={{ fontSize: "var(--text-label)", color: "var(--brand)" }}
         >
           {showDeleted ? "Hide deleted" : "Show deleted"}
-          {showDeleted && deletedCount > 0 ? ` (${deletedCount})` : ""}
         </Link>
       </div>
+
       <DataTable
-        delayMs={80}
         columns={[
           { key: "date", header: "Date" },
           { key: "category", header: "Category" },
-          { key: "amount", header: "Amount", align: "right" },
-          { key: "method", header: "Payment method" },
+          { key: "note", header: "Description" },
           { key: "paidTo", header: "Paid to" },
-          { key: "type", header: "Capital / operating" },
+          { key: "method", header: "Payment method" },
+          { key: "amount", header: "Amount", align: "right" },
+          { key: "enteredBy", header: "Entered by" },
           { key: "actions", header: "" },
         ]}
-        isEmpty={expenses.length === 0}
-        emptyMessage="No expenses recorded yet."
+        isEmpty={filteredLines.length === 0}
+        emptyMessage="No expenses match this range and filters."
       >
-        {expenses.map((e) => (
-          <Row key={e.id} expense={e} categories={categories} paymentMethods={paymentMethods} />
+        {groups.map((group) => (
+          <Fragment key={group.date}>
+            <tr style={{ background: "var(--page)" }}>
+              <td colSpan={5} className="px-3 py-2" style={{ fontWeight: 600 }}>
+                {group.date}
+              </td>
+              <td className="px-3 py-2 money text-right" style={{ fontWeight: 600 }}>
+                {formatRM(group.subtotalSen)}
+              </td>
+              <td colSpan={2} />
+            </tr>
+            {group.lines.map((l) => (
+              <Row key={l.id} expense={rowById.get(l.id)!} categories={categories} paymentMethods={paymentMethods} />
+            ))}
+          </Fragment>
         ))}
+        {filteredLines.length > 0 ? (
+          <tr style={{ fontWeight: 600, borderTop: "2px solid var(--border-strong)" }}>
+            <td colSpan={5} className="px-3 py-3">Grand total</td>
+            <td className="px-3 py-3 money text-right">{formatRM(grandTotalSen)}</td>
+            <td colSpan={2} />
+          </tr>
+        ) : null}
       </DataTable>
+
+      {showDeleted ? (
+        <DataTable
+          columns={[
+            { key: "date", header: "Date" },
+            { key: "category", header: "Category" },
+            { key: "note", header: "Description" },
+            { key: "paidTo", header: "Paid to" },
+            { key: "method", header: "Payment method" },
+            { key: "amount", header: "Amount", align: "right" },
+            { key: "enteredBy", header: "Entered by" },
+            { key: "status", header: "" },
+          ]}
+          isEmpty={deletedExpenses.length === 0}
+          emptyMessage="No deleted expenses in this range."
+        >
+          {deletedExpenses.map((e) => <DeletedRow key={e.id} expense={e} />)}
+        </DataTable>
+      ) : null}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export default function ExpensesManager({
+  expenses,
+  deletedExpenses,
+  categories,
+  paymentMethods,
+  partners,
+  currentDate,
+  rangeFrom,
+  rangeTo,
+  showDeleted,
+  isOwner,
+}: {
+  expenses: ExpenseRow[];
+  deletedExpenses: ExpenseRow[];
+  categories: Option[];
+  paymentMethods: Option[];
+  partners: Option[];
+  currentDate: string;
+  rangeFrom: string;
+  rangeTo: string;
+  showDeleted: boolean;
+  isOwner: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <AddForm categories={categories} paymentMethods={paymentMethods} currentDate={currentDate} />
+      {isOwner ? (
+        <AddCapitalInjectionForm partners={partners} paymentMethods={paymentMethods} currentDate={currentDate} />
+      ) : null}
+      <ExpenseWorkspace
+        expenses={expenses}
+        deletedExpenses={deletedExpenses}
+        categories={categories}
+        paymentMethods={paymentMethods}
+        showDeleted={showDeleted}
+        rangeFrom={rangeFrom}
+        rangeTo={rangeTo}
+      />
     </div>
   );
 }

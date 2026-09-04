@@ -78,6 +78,7 @@ export default async function AccountsPage({
             initialFrom={clampedFrom}
             initialTo={clampedTo}
             initialPreset={preset}
+            today={today}
             basePath="/accounts"
           />
         }

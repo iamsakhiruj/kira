@@ -29,6 +29,10 @@ export type TransactionDirection = (typeof TRANSACTION_DIRECTIONS)[number];
  * normally belongs in payroll (Step 2.5), not here — the UI hints as much —
  * but it is kept in the enum by decision. `director_loan` is the one that
  * carries Section 140B exposure and is surfaced visibly, not just stored.
+ * `capital_injection` (Phase 2 §2.11) is money the owner puts into the
+ * business — the /expenses page's capital-injection entry type writes here,
+ * `direction: "injection"`, never into the `expenses` collection, so it can
+ * never land in an expense total.
  */
 export const TRANSACTION_PURPOSES = [
   "salary",
@@ -36,6 +40,7 @@ export const TRANSACTION_PURPOSES = [
   "reimbursement",
   "loan_repayment",
   "director_loan",
+  "capital_injection",
 ] as const;
 export type TransactionPurpose = (typeof TRANSACTION_PURPOSES)[number];
 
@@ -119,6 +124,21 @@ export const PartnerTransactionInputSchema = z.object({
   direction: z.enum(TRANSACTION_DIRECTIONS),
   paymentMethodId: z.string().min(1, "Choose a payment method."),
   purpose: z.enum(TRANSACTION_PURPOSES),
+  reference: z.string().trim().max(120).default(""),
+  note: z.string().max(2000).default(""),
+});
+
+/**
+ * What the /expenses page's capital-injection form sends — direction and
+ * purpose are never client input (fixed server-side to "injection" /
+ * "capital_injection" in app/expenses/actions.ts), so this can't be used to
+ * spoof a drawing or another purpose through that entry point.
+ */
+export const CapitalInjectionInputSchema = z.object({
+  partnerId: z.string().min(1, "Choose a partner."),
+  date: dateStr,
+  amountSen: z.number().int("Amounts are whole sen.").min(1, "Enter an amount greater than zero."),
+  paymentMethodId: z.string().min(1, "Choose a payment method."),
   reference: z.string().trim().max(120).default(""),
   note: z.string().max(2000).default(""),
 });

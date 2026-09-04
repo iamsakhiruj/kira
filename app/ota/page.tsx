@@ -142,6 +142,7 @@ export default async function OtaPage({
             initialFrom={clampedFrom}
             initialTo={clampedTo}
             initialPreset={preset}
+            today={today}
             basePath="/ota"
           />
         }
