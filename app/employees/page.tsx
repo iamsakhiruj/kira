@@ -24,6 +24,7 @@ export default async function EmployeesPage() {
       ? (await getEmployeesFull()).map((e) => ({
           id: e._id.toString(),
           name: e.name,
+          employeeNumber: e.employeeNumber,
           position: e.position,
           department: e.department,
           joinDate: e.joinDate,
@@ -48,6 +49,7 @@ export default async function EmployeesPage() {
       : (await getEmployeesManagerView()).map((e) => ({
           id: (e as { _id: { toString(): string } })._id.toString(),
           name: e.name,
+          employeeNumber: e.employeeNumber,
           position: e.position,
           department: e.department,
           joinDate: e.joinDate,

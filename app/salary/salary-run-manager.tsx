@@ -25,6 +25,7 @@ interface Line {
   workingDaysInMonth: number;
   basicEarnedSen: number;
   allowancesSen: number;
+  overtimeSen: number;
   grossSen: number;
   unpaidAbsenceDeductionSen: number;
   advanceRepaymentSen: number;
@@ -59,6 +60,7 @@ function parseMoney(s: string): number | null {
 
 function EditForm({ line, methods, onDone }: { line: Line; methods: Method[]; onDone: () => void }) {
   const router = useRouter();
+  const [overtime, setOvertime] = useState(fromSen(line.overtimeSen));
   const [advance, setAdvance] = useState(fromSen(line.advanceRepaymentSen));
   const [other, setOther] = useState(fromSen(line.otherDeductionSen));
   const [otherNote, setOtherNote] = useState(line.otherDeductionNote);
@@ -69,11 +71,12 @@ function EditForm({ line, methods, onDone }: { line: Line; methods: Method[]; on
 
   async function save() {
     setError(null);
+    const overtimeSen = parseMoney(overtime);
     const advanceSen = parseMoney(advance);
     const otherSen = parseMoney(other);
     const statutorySen = parseMoney(statutory);
-    if (advanceSen === null || otherSen === null || statutorySen === null) {
-      setError("Deductions can't be negative or unparseable.");
+    if (overtimeSen === null || advanceSen === null || otherSen === null || statutorySen === null) {
+      setError("Amounts can't be negative or unparseable.");
       return;
     }
     if (otherSen > 0 && otherNote.trim() === "") {
@@ -82,6 +85,7 @@ function EditForm({ line, methods, onDone }: { line: Line; methods: Method[]; on
     }
     setPending(true);
     const res = await updateLine(line.id, {
+      overtimeSen,
       advanceRepaymentSen: advanceSen,
       otherDeductionSen: otherSen,
       otherDeductionNote: otherNote.trim(),
@@ -101,6 +105,18 @@ function EditForm({ line, methods, onDone }: { line: Line; methods: Method[]; on
     <tr style={{ borderBottom: "1px solid var(--border)", background: "var(--page)" }}>
       <td className="p-3" colSpan={7}>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <label className="flex flex-col gap-1">
+            <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>
+              Overtime (RM)
+            </span>
+            <input
+              inputMode="decimal"
+              className="money h-11 rounded border px-3"
+              style={fieldStyle}
+              value={overtime}
+              onChange={(e) => setOvertime(e.target.value)}
+            />
+          </label>
           <label className="flex flex-col gap-1">
             <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>
               Advance repayment (RM)
@@ -309,7 +325,16 @@ function Row({ line, methods }: { line: Line; methods: Method[] }) {
           </span>
         </div>
       </td>
-      <td className="px-4 py-3 money">{formatRM(line.grossSen)}</td>
+      <td className="px-4 py-3 money">
+        <div className="flex flex-col">
+          <span>{formatRM(line.grossSen)}</span>
+          {line.overtimeSen > 0 ? (
+            <span style={{ fontSize: "var(--text-caption)", color: "var(--text-muted)" }}>
+              incl. overtime {formatRM(line.overtimeSen)}
+            </span>
+          ) : null}
+        </div>
+      </td>
       <td className="px-4 py-3 money">
         <div className="flex flex-col">
           <span>{formatRM(line.totalDeductionsSen)}</span>

@@ -5,10 +5,11 @@
 
 import { ObjectId, type Collection, type Document, type WithId } from "mongodb";
 import { z } from "zod";
-import { getDb } from "./mongodb";
+import { getDb, getMongoClient } from "./mongodb";
 import { recordAudit } from "./audit";
+import { nextSequence } from "./countersStore";
 import type { Role } from "./session";
-import { type Expense, type ExpenseInputSchema } from "./expenses";
+import { formatExpenseVoucherRef, type Expense, type ExpenseInputSchema } from "./expenses";
 
 export type StoredExpense = WithId<Expense>;
 
@@ -173,4 +174,67 @@ export async function softDeleteExpense(
     reason,
   });
   return after;
+}
+
+/**
+ * Return this expense's voucher number, assigning one (gaplessly, in a
+ * transaction with the document write — same pattern as
+ * lib/bookingsStore.ts's createBooking) the first time it's asked for.
+ * Every later call just returns the number already stored, so a reprint
+ * never gets a different one.
+ */
+export async function getOrAssignVoucherNumber(
+  id: string,
+  actor: { id: string; role: Role },
+): Promise<string> {
+  if (!ObjectId.isValid(id)) throw new Error("Invalid expense id.");
+  const _id = new ObjectId(id);
+  const col = await collection();
+
+  const existing = (await col.findOne({ _id })) as StoredExpense | null;
+  if (!existing) throw new Error("That expense no longer exists.");
+  if (existing.voucherNumber) return existing.voucherNumber;
+
+  const year = new Date().getUTCFullYear();
+  const client = await getMongoClient();
+  const session = client.startSession();
+  let voucherNumber = "";
+  let before: StoredExpense | null = null;
+  let assigned = false;
+
+  try {
+    await session.withTransaction(async () => {
+      // Re-read inside the transaction — a concurrent generate could have
+      // assigned one between the check above and here. Never burn a
+      // sequence number if one is already set.
+      before = (await col.findOne({ _id }, { session })) as StoredExpense | null;
+      if (!before) throw new Error("That expense no longer exists.");
+      if (before.voucherNumber) {
+        voucherNumber = before.voucherNumber;
+        return;
+      }
+      const seq = await nextSequence(`expense-voucher-${year}`, session);
+      voucherNumber = formatExpenseVoucherRef(year, seq);
+      await col.updateOne({ _id }, { $set: { voucherNumber } }, { session });
+      assigned = true;
+    });
+  } finally {
+    await session.endSession();
+  }
+
+  if (assigned && before) {
+    const beforeDoc: StoredExpense = before;
+    await recordAudit({
+      actorId: actor.id,
+      actorRole: actor.role,
+      action: "update",
+      collection: "expenses",
+      documentId: id,
+      before: beforeDoc,
+      after: { ...beforeDoc, voucherNumber },
+      reason: "expense voucher generated",
+    });
+  }
+
+  return voucherNumber;
 }

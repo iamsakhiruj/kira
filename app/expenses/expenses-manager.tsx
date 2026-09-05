@@ -418,6 +418,9 @@ function Row({ expense, categories, paymentMethods }: {
       <td className="px-3 py-2">{expense.enteredBy}</td>
       <td className="px-3 py-2 text-right">
         <div className="flex justify-end gap-3">
+          <a href={`/expenses/${expense.id}/voucher`} target="_blank" rel="noopener noreferrer" style={{ color: "var(--brand)" }}>
+            Voucher
+          </a>
           <button type="button" onClick={() => setMode("edit")} style={{ color: "var(--brand)" }}>Edit</button>
           <button type="button" onClick={() => setMode("delete")} style={{ color: "var(--text-muted)" }}>Delete</button>
         </div>

@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import {
   SalaryLineEditSchema,
   MarkPaidSchema,
+  PayslipConfigSchema,
 } from "@/lib/salaryPayments";
 import {
   ensureSalaryIndexes,
@@ -12,6 +13,7 @@ import {
   updateSalaryLine,
   markLinePaid,
   createAdjustment,
+  updateSalaryPayslipConfig,
   type RunSummary,
 } from "@/lib/salaryStore";
 
@@ -51,6 +53,7 @@ export async function updateLine(
     await updateSalaryLine(
       id,
       {
+        overtimeSen: parsed.data.overtimeSen,
         advanceRepaymentSen: parsed.data.advanceRepaymentSen,
         otherDeductionSen: parsed.data.otherDeductionSen,
         otherDeductionNote: parsed.data.otherDeductionNote,
@@ -90,6 +93,26 @@ export async function adjustLine(id: string): Promise<ActionResult> {
   const user = await requireUser("owner");
   try {
     await createAdjustment(id, { id: user.sub, role: user.role });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
+  }
+}
+
+/** Save the payslip PDF configuration used for a salary line — stored so a
+ * reprint matches (brief: "regenerable later"). Owner-only, same as the
+ * rest of this module. */
+export async function savePayslipConfig(
+  id: string,
+  config: unknown,
+): Promise<ActionResult> {
+  const user = await requireUser("owner");
+  const parsed = PayslipConfigSchema.safeParse(config);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the payslip options." };
+  }
+  try {
+    await updateSalaryPayslipConfig(id, parsed.data, { id: user.sub, role: user.role });
     return { ok: true };
   } catch (err) {
     return { ok: false, error: (err as Error).message };

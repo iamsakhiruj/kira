@@ -134,3 +134,57 @@ export function formatRM(sen: number): string {
   const negative = sen < 0;
   return `${negative ? "-" : ""}RM ${fromSen(Math.abs(sen))}`;
 }
+
+const ONES = [
+  "", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+  "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+  "Seventeen", "Eighteen", "Nineteen",
+];
+const TENS = [
+  "", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety",
+];
+
+/** Spell out a non-negative integer below one million, short-scale English. */
+function integerToWords(n: number): string {
+  if (n === 0) return "Zero";
+  if (n < 20) return ONES[n];
+  if (n < 100) {
+    const rest = n % 10;
+    return TENS[Math.floor(n / 10)] + (rest ? ` ${ONES[rest]}` : "");
+  }
+  if (n < 1000) {
+    const rest = n % 100;
+    return `${ONES[Math.floor(n / 100)]} Hundred${rest ? ` ${integerToWords(rest)}` : ""}`;
+  }
+  const thousands = Math.floor(n / 1000);
+  const rest = n % 1000;
+  return `${integerToWords(thousands)} Thousand${rest ? ` ${integerToWords(rest)}` : ""}`;
+}
+
+/**
+ * Spell out an amount for print (the expense voucher's "amount in words").
+ * 123450 -> "Ringgit Malaysia One Thousand Two Hundred Thirty Four and Fifty
+ * Sen Only". Handles amounts up to just under one billion ringgit — ample
+ * for a hotel's internal vouchers.
+ */
+export function amountInWords(sen: number): string {
+  if (!Number.isInteger(sen) || sen < 0) {
+    throw new MoneyError("Amount in words needs a non-negative whole number of sen.");
+  }
+  const ringgit = Math.floor(sen / 100);
+  const cents = sen % 100;
+
+  let ringgitWords: string;
+  if (ringgit === 0) {
+    ringgitWords = "Zero";
+  } else if (ringgit < 1_000_000) {
+    ringgitWords = integerToWords(ringgit);
+  } else {
+    const millions = Math.floor(ringgit / 1_000_000);
+    const rest = ringgit % 1_000_000;
+    ringgitWords = `${integerToWords(millions)} Million${rest ? ` ${integerToWords(rest)}` : ""}`;
+  }
+
+  const centsWords = cents > 0 ? ` and ${integerToWords(cents)} Sen` : "";
+  return `Ringgit Malaysia ${ringgitWords}${centsWords} Only`;
+}

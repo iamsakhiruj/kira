@@ -51,6 +51,23 @@ export const ORDINARY_RATE_DIVISOR = 26;
 
 export type PayType = "monthly" | "daily";
 
+// Fixed lookup table rather than Intl.DateTimeFormat — same reasoning as
+// lib/businessDate.ts's formatBusinessDateLabel: locale-dependent month
+// forms can silently drift from an exact printed label.
+const FULL_MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** A human label for a payroll month, e.g. "2026-09" -> "September 2026". */
+export function formatPayrollMonthLabel(month: string): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(month);
+  if (!m) throw new Error(`Invalid month "${month}", expected YYYY-MM.`);
+  const monthIndex = Number(m[2]) - 1;
+  if (monthIndex < 0 || monthIndex > 11) throw new Error(`Invalid month "${month}".`);
+  return `${FULL_MONTH_NAMES[monthIndex]} ${m[1]}`;
+}
+
 /** Tally of an attendance month by status. */
 export interface AttendanceCounts {
   present: number;
@@ -116,6 +133,10 @@ export interface SalaryInput {
   /** Monthly basic wage (monthly-rated) OR daily rate (daily-rated), in sen. */
   basicAmountSen: number;
   fixedAllowancesSen: number;
+  /** A manual, owner-typed total for the period — this system has no
+   * hours × rate overtime calculation, same "we record what was paid, we
+   * don't compute it" stance already taken for statutory deductions. */
+  overtimeSen: number;
   presentDays: number;
   unpaidAbsenceDays: number;
   advanceRepaymentSen: number;
@@ -127,6 +148,7 @@ export interface SalaryComputation {
   /** Earned basic before allowances: full monthly amount, or rate × present. */
   basicEarnedSen: number;
   allowancesSen: number;
+  overtimeSen: number;
   grossSen: number;
   unpaidAbsenceDeductionSen: number;
   advanceRepaymentSen: number;
@@ -150,6 +172,7 @@ function assertNonNegInt(n: number, label: string): void {
 export function computeSalary(input: SalaryInput): SalaryComputation {
   assertNonNegInt(input.basicAmountSen, "Basic amount");
   assertNonNegInt(input.fixedAllowancesSen, "Fixed allowances");
+  assertNonNegInt(input.overtimeSen, "Overtime");
   assertNonNegInt(input.advanceRepaymentSen, "Advance repayment");
   assertNonNegInt(input.otherDeductionSen, "Other deduction");
   assertNonNegInt(input.statutoryDeductionSen, "Statutory deduction");
@@ -182,7 +205,7 @@ export function computeSalary(input: SalaryInput): SalaryComputation {
   }
 
   const allowancesSen = input.fixedAllowancesSen;
-  const grossSen = basicEarnedSen + allowancesSen;
+  const grossSen = basicEarnedSen + allowancesSen + input.overtimeSen;
   const totalDeductionsSen =
     unpaidAbsenceDeductionSen +
     input.advanceRepaymentSen +
@@ -193,6 +216,7 @@ export function computeSalary(input: SalaryInput): SalaryComputation {
   return {
     basicEarnedSen,
     allowancesSen,
+    overtimeSen: input.overtimeSen,
     grossSen,
     unpaidAbsenceDeductionSen,
     advanceRepaymentSen: input.advanceRepaymentSen,

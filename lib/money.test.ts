@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { toSen, fromSen, formatRM, MoneyError } from "./money";
+import { toSen, fromSen, formatRM, amountInWords, MoneyError } from "./money";
 
 describe("toSen", () => {
   it("parses whole ringgit", () => {
@@ -91,6 +91,41 @@ describe("formatRM", () => {
 
   it("keeps the minus in front of the symbol", () => {
     expect(formatRM(-2000)).toBe("-RM 20.00");
+  });
+});
+
+describe("amountInWords", () => {
+  it("spells out a plain amount", () => {
+    expect(amountInWords(123450)).toBe(
+      "Ringgit Malaysia One Thousand Two Hundred Thirty Four and Fifty Sen Only",
+    );
+  });
+
+  it("omits the sen clause when there are no sen", () => {
+    expect(amountInWords(500000)).toBe("Ringgit Malaysia Five Thousand Only");
+  });
+
+  it("handles zero", () => {
+    expect(amountInWords(0)).toBe("Ringgit Malaysia Zero Only");
+  });
+
+  it("handles sen-only amounts under one ringgit", () => {
+    expect(amountInWords(50)).toBe("Ringgit Malaysia Zero and Fifty Sen Only");
+  });
+
+  it("handles hundreds and teens correctly", () => {
+    expect(amountInWords(11900)).toBe("Ringgit Malaysia One Hundred Nineteen Only");
+  });
+
+  it("handles a seven-figure amount", () => {
+    expect(amountInWords(1_234_567_00)).toBe(
+      "Ringgit Malaysia One Million Two Hundred Thirty Four Thousand Five Hundred Sixty Seven Only",
+    );
+  });
+
+  it("rejects negative or non-integer sen", () => {
+    expect(() => amountInWords(-100)).toThrow(MoneyError);
+    expect(() => amountInWords(12.5)).toThrow(MoneyError);
   });
 });
 

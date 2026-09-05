@@ -38,6 +38,10 @@ const nullableDateStr = z
 
 export const ManagerEmployeeFieldsSchema = z.object({
   name: z.string().trim().min(1, "Enter a name.").max(120),
+  /** Free-text staff number/code — shown on the payslip. Optional: not every
+   * hotel this size runs a numbering scheme, and nothing else in the system
+   * depends on it being set. */
+  employeeNumber: z.string().trim().max(40).default(""),
   position: z.string().trim().min(1, "Enter a position.").max(120),
   department: z.string().max(120).default(""),
   joinDate: dateStr,

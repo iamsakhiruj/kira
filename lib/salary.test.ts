@@ -12,6 +12,7 @@ const base: SalaryInput = {
   payType: "monthly",
   basicAmountSen: 260000, // RM 2,600.00
   fixedAllowancesSen: 0,
+  overtimeSen: 0,
   presentDays: 0,
   unpaidAbsenceDays: 0,
   advanceRepaymentSen: 0,
@@ -125,6 +126,20 @@ describe("computeSalary — monthly-rated Employment Act rules", () => {
     expect(r.allowancesSen).toBe(30000);
     expect(r.grossSen).toBe(260000 + 30000);
     // Deduction is based on basic only, not gross.
+    expect(r.unpaidAbsenceDeductionSen).toBe(20000);
+  });
+
+  it("adds a manual overtime total to gross without affecting the unpaid-absence deduction", () => {
+    // Overtime is an owner-typed figure (this system has no hours × rate
+    // calculation) — it adds to gross like an allowance, but stays a
+    // separate line, and never enters the ordinary-rate-of-pay divisor.
+    const r = computeSalary({
+      ...base,
+      overtimeSen: 15000, // RM 150
+      unpaidAbsenceDays: 2,
+    });
+    expect(r.overtimeSen).toBe(15000);
+    expect(r.grossSen).toBe(260000 + 15000);
     expect(r.unpaidAbsenceDeductionSen).toBe(20000);
   });
 });

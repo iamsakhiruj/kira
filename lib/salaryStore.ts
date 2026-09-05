@@ -14,7 +14,9 @@ import { recordAudit } from "./audit";
 import type { Role } from "./session";
 import {
   SalaryPaymentSchema,
+  PayslipConfigSchema,
   type SalaryPayment,
+  type PayslipConfig,
 } from "./salaryPayments";
 import {
   computeSalary,
@@ -48,6 +50,7 @@ export async function ensureSalaryIndexes(): Promise<void> {
 }
 
 interface ManualInputs {
+  overtimeSen: number;
   advanceRepaymentSen: number;
   otherDeductionSen: number;
   otherDeductionNote: string;
@@ -56,12 +59,21 @@ interface ManualInputs {
 }
 
 const ZERO_MANUAL: ManualInputs = {
+  overtimeSen: 0,
   advanceRepaymentSen: 0,
   otherDeductionSen: 0,
   otherDeductionNote: "",
   statutoryDeductionSen: 0,
   paymentMethodId: null,
 };
+
+/** Last 4 characters of a bank account number, for the payslip — the full
+ * number never leaves lib/employeesStore.ts's owner-only fields for this
+ * purpose. Blank in, blank out. */
+function last4(bankAccount: string): string {
+  const digits = bankAccount.trim();
+  return digits.length <= 4 ? digits : digits.slice(-4);
+}
 
 /** Compute a full salary-line document from an employee, a month's attendance
  * and the manual deduction inputs. Pure assembly around computeSalary(). */
@@ -88,6 +100,7 @@ function buildLine(
     payType: employee.payType,
     basicAmountSen: employee.basicAmountSen,
     fixedAllowancesSen: employee.fixedAllowancesSen,
+    overtimeSen: manual.overtimeSen,
     presentDays: counts.present,
     unpaidAbsenceDays: counts.unpaid_absence,
     advanceRepaymentSen: manual.advanceRepaymentSen,
@@ -98,11 +111,13 @@ function buildLine(
   return SalaryPaymentSchema.parse({
     employeeId: employee._id.toString(),
     employeeName: employee.name,
+    employeeNumber: employee.employeeNumber ?? "",
     position: employee.position ?? "",
     month,
     payType: employee.payType,
     basicAmountSen: employee.basicAmountSen,
     fixedAllowancesSen: employee.fixedAllowancesSen,
+    overtimeSen: comp.overtimeSen,
     presentDays: counts.present,
     unpaidAbsenceDays: counts.unpaid_absence,
     workingDaysInMonth: wd,
@@ -119,6 +134,8 @@ function buildLine(
     paymentMethodId: manual.paymentMethodId,
     paidDate: meta.paidDate ?? null,
     status: meta.status,
+    bankName: employee.bankName ?? "",
+    bankAccountLast4: last4(employee.bankAccount ?? ""),
     directorRemuneration: employee.partnerId != null,
     partnerId: employee.partnerId ?? null,
     adjustmentOf: meta.adjustmentOf,
@@ -172,6 +189,7 @@ export async function generateOrRefreshDraftRun(
 
     const manual: ManualInputs = existing
       ? {
+          overtimeSen: existing.overtimeSen ?? 0,
           advanceRepaymentSen: existing.advanceRepaymentSen,
           otherDeductionSen: existing.otherDeductionSen,
           otherDeductionNote: existing.otherDeductionNote,
@@ -290,17 +308,23 @@ export async function updateSalaryLine(
     throw new Error("A paid salary line can't be edited. Create an adjustment.");
   }
 
+  // Overtime is manual like the deductions below, but it adds to gross
+  // rather than subtracting from it — basicEarnedSen/allowancesSen stay
+  // frozen from the attendance-driven snapshot, only overtime moves.
+  const grossSen = before.basicEarnedSen + before.allowancesSen + edit.overtimeSen;
   const totalDeductionsSen =
     before.unpaidAbsenceDeductionSen +
     edit.advanceRepaymentSen +
     edit.otherDeductionSen +
     edit.statutoryDeductionSen;
-  const netSen = before.grossSen - totalDeductionsSen;
+  const netSen = grossSen - totalDeductionsSen;
 
   const after = await col.findOneAndUpdate(
     { _id, status: "draft" },
     {
       $set: {
+        overtimeSen: edit.overtimeSen,
+        grossSen,
         advanceRepaymentSen: edit.advanceRepaymentSen,
         otherDeductionSen: edit.otherDeductionSen,
         otherDeductionNote: edit.otherDeductionNote,
@@ -421,4 +445,36 @@ export async function createAdjustment(
     reason: `adjustment of ${originalId}`,
   });
   return res.insertedId.toString();
+}
+
+/** Store the payslip PDF configuration last used for a line, so a reprint
+ * matches what was issued — same pattern as the reservation letter's
+ * updateBookingLetterConfig. Presentation only (remarks + which optional
+ * fields to show); it never touches a pay figure, so it's allowed on a paid
+ * line too. */
+export async function updateSalaryPayslipConfig(
+  id: string,
+  config: PayslipConfig,
+  actor: { id: string; role: Role },
+): Promise<void> {
+  if (!ObjectId.isValid(id)) throw new Error("Invalid salary line id.");
+  const _id = new ObjectId(id);
+  const col = await collection();
+  const before = await col.findOne({ _id });
+  if (!before) throw new Error("That salary line no longer exists.");
+  const after = await col.findOneAndUpdate(
+    { _id },
+    { $set: { payslipConfig: PayslipConfigSchema.parse(config) } },
+    { returnDocument: "after" },
+  );
+  await recordAudit({
+    actorId: actor.id,
+    actorRole: actor.role,
+    action: "update",
+    collection: "salaryPayments",
+    documentId: id,
+    before,
+    after,
+    reason: "payslip generated",
+  });
 }

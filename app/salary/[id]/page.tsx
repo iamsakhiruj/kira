@@ -78,9 +78,23 @@ export default async function PayslipPage({
         <Link href={`/salary?month=${p.month}`} style={{ color: "var(--brand)" }}>
           ← Back to {p.month}
         </Link>
-        <Badge tone={p.status === "paid" ? "neutral" : "muted"}>
-          {p.status === "paid" ? "Paid" : "Draft"}
-        </Badge>
+        <div className="flex items-center gap-3">
+          <Badge tone={p.status === "paid" ? "neutral" : "muted"}>
+            {p.status === "paid" ? "Paid" : "Draft"}
+          </Badge>
+          <Link
+            href={`/salary/${id}/payslip`}
+            className="h-11 rounded-card border px-4"
+            style={{
+              borderColor: "var(--border-strong)",
+              color: "var(--brand)",
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            Payslip PDF
+          </Link>
+        </div>
       </div>
 
       <div>
@@ -116,6 +130,7 @@ export default async function PayslipPage({
           amountSen={p.basicEarnedSen}
         />
         <Line label="Fixed allowances" amountSen={p.allowancesSen} />
+        <Line label="Overtime" amountSen={p.overtimeSen ?? 0} />
         <Line label="Gross" amountSen={p.grossSen} strong />
       </Card>
 

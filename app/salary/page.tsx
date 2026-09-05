@@ -68,6 +68,7 @@ export default async function SalaryPage({
     workingDaysInMonth: l.workingDaysInMonth,
     basicEarnedSen: l.basicEarnedSen,
     allowancesSen: l.allowancesSen,
+    overtimeSen: l.overtimeSen ?? 0,
     grossSen: l.grossSen,
     unpaidAbsenceDeductionSen: l.unpaidAbsenceDeductionSen,
     advanceRepaymentSen: l.advanceRepaymentSen,

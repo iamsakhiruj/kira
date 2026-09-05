@@ -29,6 +29,7 @@ const STATUS_TONE: Record<Status, BadgeTone> = {
 interface ManagerFields {
   id: string;
   name: string;
+  employeeNumber: string;
   position: string;
   department: string;
   joinDate: string;
@@ -77,6 +78,16 @@ function ManagerFieldInputs({
           aria-label="Name"
           value={value.name}
           onChange={(e) => onChange({ ...value, name: e.target.value })}
+          className="h-11 rounded border px-3"
+          style={fieldStyle}
+        />
+      </label>
+      <label className="flex flex-col gap-1">
+        <span style={{ fontSize: "var(--text-label)", color: "var(--text-muted)" }}>Employee number (optional)</span>
+        <input
+          aria-label="Employee number"
+          value={value.employeeNumber}
+          onChange={(e) => onChange({ ...value, employeeNumber: e.target.value })}
           className="h-11 rounded border px-3"
           style={fieldStyle}
         />
@@ -279,6 +290,7 @@ function OwnerFieldInputs({
 
 const BLANK_MANAGER: Omit<ManagerFields, "id"> = {
   name: "",
+  employeeNumber: "",
   position: "",
   department: "",
   joinDate: "",
@@ -331,6 +343,7 @@ function EmployeeForm({
     initial
       ? {
           name: initial.name,
+          employeeNumber: initial.employeeNumber,
           position: initial.position,
           department: initial.department,
           joinDate: initial.joinDate,
@@ -447,7 +460,16 @@ function EmployeeRowView({ employee, role }: { employee: EmployeeRow; role: "man
   }
   return (
     <tr className="table-row-hover" style={{ borderBottom: "1px solid var(--border)" }}>
-      <td className="px-4 py-3">{employee.name}</td>
+      <td className="px-4 py-3">
+        <div className="flex flex-col">
+          <span>{employee.name}</span>
+          {employee.employeeNumber ? (
+            <span style={{ fontSize: "var(--text-caption)", color: "var(--text-muted)" }}>
+              {employee.employeeNumber}
+            </span>
+          ) : null}
+        </div>
+      </td>
       <td className="px-4 py-3">{employee.position}</td>
       <td className="px-4 py-3">{employee.department || "—"}</td>
       <td className="px-4 py-3">
